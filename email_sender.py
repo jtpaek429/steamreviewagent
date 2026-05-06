@@ -222,6 +222,11 @@ def _shared_styles() -> str:
   .trend-bar-prev {{ height: 8px; background: #d1d5db; border-radius: 4px; }}
   .trend-bar-curr {{ height: 8px; background: #fb923c; border-radius: 4px; }}
   .trend-meta {{ font-size: 12px; color: #78350f; margin-top: 4px; }}
+  .conf-bar-wrap {{ display: flex; align-items: center; gap: 6px; margin: 4px 0 8px; }}
+  .conf-label {{ font-size: 11px; color: #888; width: 62px; }}
+  .conf-track {{ width: 80px; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }}
+  .conf-fill  {{ height: 6px; border-radius: 3px; }}
+  .conf-pct   {{ font-size: 11px; color: #888; }}
   .footer {{ text-align: center; font-size: 12px; color: #aaa; padding: 8px; }}
 </style>"""
 
@@ -283,8 +288,10 @@ def _build_themes(themes: list[dict]) -> str:
         sentiment = theme.get("sentiment", "mixed")
         count = theme.get("review_count", 0)
         quotes = theme.get("representative_quotes", [])
+        confidence = theme.get("confidence")
 
         quotes_html = "".join(f"<li>&ldquo;{q}&rdquo;</li>" for q in quotes)
+        confidence_html = _build_confidence_bar(confidence) if confidence is not None else ""
 
         parts.append(f"""
 <div class="theme">
@@ -296,11 +303,33 @@ def _build_themes(themes: list[dict]) -> str:
     </span>
   </div>
   <p class="theme-desc">{desc}</p>
+  {confidence_html}
   {"<ul class='quotes'>" + quotes_html + "</ul>" if quotes_html else ""}
 </div>
 """)
 
     return "\n".join(parts)
+
+
+def _build_confidence_bar(confidence: float) -> str:
+    pct = int(round(confidence * 100))
+    # colour: green ≥75, yellow ≥50, red below
+    if pct >= 75:
+        color = "#10b981"
+    elif pct >= 50:
+        color = "#f59e0b"
+    else:
+        color = "#ef4444"
+    filled = int(round(confidence * 80))  # bar is 80px wide max
+    return (
+        f'<div class="conf-bar-wrap">'
+        f'<span class="conf-label">Confidence</span>'
+        f'<div class="conf-track">'
+        f'<div class="conf-fill" style="width:{filled}px;background:{color};"></div>'
+        f'</div>'
+        f'<span class="conf-pct">{pct}%</span>'
+        f'</div>'
+    )
 
 
 def _build_spikes(spikes: list[dict]) -> str:

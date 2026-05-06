@@ -69,7 +69,7 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 
 ### analyze.py
 - Uses Claude tool use with `tool_choice={"type": "tool", "name": "submit_analysis"}` to force structured output — no JSON parsing needed, output is a Python dict directly from `block.input`
-- Schema: `review_count`, `overall_sentiment`, `themes[]` (name, description, review_count, sentiment, representative_quotes), `flagged_spikes[]`
+- Schema: `review_count`, `overall_sentiment`, `themes[]` (name, description, review_count, sentiment, representative_quotes, confidence 0–1), `flagged_spikes[]`
 - Individual reviews are truncated to 300 chars before sending to Claude
 - Model: `claude-sonnet-4-6`
 
@@ -94,10 +94,9 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - `games.json` is a committed JSON array of `{app_id, game_name}` objects — edit it to add/remove tracked games
 - `send_multi_digest` in `email_sender.py` builds one HTML email with a card group per game plus a red "Failed Games" card when any game errors
 
-## Upcoming Features
-
-- Scheduled execution — add a shell script or cron job so it actually runs every Monday morning without you touching it.
-- Confidence scores on themes — ask Claude to include a confidence score (0–1) per theme.
+### schedule.sh / run_weekly.sh
+- `run_weekly.sh` — wrapper invoked by cron; `cd`s to the project dir, runs `agent.py --config games.json`, appends stdout/stderr to `data/run_weekly.log`
+- `schedule.sh` — manages the cron entry with `--enable` (Mondays 8 AM), `--disable`, `--status`; uses a `# steam-review-agent` marker to find/remove its own cron line without touching other jobs
 
 
 ## Git workflow

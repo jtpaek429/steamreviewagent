@@ -1,5 +1,8 @@
 # Steam Review Agent — CLAUDE.md
 
+## Context
+This is a side project that a PM is making to explore agentic workflow automation. When collaborating with the PM, explain the tradeoffs between options, your suggestion, and then allow the PM to make the final decision.
+
 ## What this project does
 
 Agentic Python pipeline: pulls the last 7 days of Steam reviews for a given game, uses the Claude API to categorize reviews by theme and summarize sentiment, then sends an email digest via SendGrid.

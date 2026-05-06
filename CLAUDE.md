@@ -32,6 +32,8 @@ agent.py          # CLI entry point — orchestrates all three phases
 steam.py          # Phase 1: fetches reviews from Steam public API
 analyze.py        # Phase 2: sends reviews to Claude, returns structured JSON
 email_sender.py   # Phase 3: formats JSON into HTML email, sends via SendGrid
+trends.py         # Trend storage + week-over-week spike detection (SQLite)
+data/history.db   # SQLite DB — gitignored, created automatically on first run
 requirements.txt
 .env.example      # copy to .env and fill in keys
 ```
@@ -70,12 +72,20 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - Sentiment color coding: 🟢 positive, 🔴 negative, 🟡 mixed
 - SendGrid expects status 202 on successful send
 
+### trends.py
+- Persists each run's theme snapshot to `data/history.db` (SQLite, stdlib `sqlite3` — no new dependency)
+- Schema: one row per `(app_id, run_date)`; upserts so running the agent twice on the same day overwrites rather than duplicates
+- Spike detection is **proportion-based**: compares `theme_count / total_review_count` between weeks, not raw counts — handles weeks where the review volume differs
+- Threshold: ≥50% relative increase in proportion flags a spike. Chosen over 2x (too harsh) after considering that 100→175 out of 500 reviews (a meaningful real-world jump) is only a 75% relative increase, not 100%
+- Floor rules: existing themes need ≥10 reviews to be considered; new themes (not present last week) need ≥15 reviews to be flagged
+- First run: no trend section in the email — baseline is silently saved. Comparison starts on the second run
+- `trends.py --app_id <id>` prints the last saved run for inspection
+
 ## Upcoming Features
 
 - Multi-game tracking with a config file — accept a list of app IDs and game names, run the pipeline for each, send one consolidated digest
-- Week-over-week trend detection — store each run's analysis in a lightweight JSON file or SQLite DB, then compare this week's theme counts to last week's. Flag when a theme like "crashes" spikes 2x.
-- Scheduled execution — add a shell script or cron job so it actually runs every Monday morning without you touching it. 
-- Confidence scores on themes — ask Claude to include a confidence score (0–1) per theme. 
+- Scheduled execution — add a shell script or cron job so it actually runs every Monday morning without you touching it.
+- Confidence scores on themes — ask Claude to include a confidence score (0–1) per theme.
 - Game name lookup — call the Steam store API to resolve the game name from the App ID automatically, so you don't need --game_name.
 
 

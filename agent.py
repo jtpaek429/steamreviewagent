@@ -12,6 +12,7 @@ load_dotenv(override=True)
 from steam import SteamAPIError, fetch_reviews
 from analyze import analyze_reviews
 from email_sender import send_digest
+from trends import compute_trends, init_db, load_last_run, save_run
 
 
 def main():
@@ -19,6 +20,8 @@ def main():
     parser.add_argument("--app_id", required=True, help="Steam App ID")
     parser.add_argument("--game_name", default="", help="Human-readable game name")
     args = parser.parse_args()
+
+    init_db()
 
     print(f"[1/3] Fetching Steam reviews for App ID {args.app_id}…")
     try:
@@ -36,9 +39,19 @@ def main():
         raise SystemExit(1)
     print(f"      → {len(analysis.get('themes', []))} theme(s) identified.\n")
 
+    previous_run = load_last_run(args.app_id)
+    trend_spikes = compute_trends(analysis, previous_run) if previous_run else []
+    save_run(args.app_id, analysis)
+
+    if previous_run:
+        print(f"      → Compared against run from {previous_run['run_date']}; "
+              f"{len(trend_spikes)} trend spike(s) detected.\n")
+    else:
+        print("      → No prior run found; trend baseline saved for next week.\n")
+
     print("[3/3] Sending email digest…")
     try:
-        send_digest(analysis, args.app_id, args.game_name)
+        send_digest(analysis, args.app_id, args.game_name, trend_spikes)
     except (ValueError, RuntimeError) as e:
         print(f"Email error: {e}")
         raise SystemExit(1)

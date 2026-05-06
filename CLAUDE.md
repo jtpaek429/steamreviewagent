@@ -13,8 +13,14 @@ Steam API → raw reviews → Claude (categorize + summarize) → SendGrid (emai
 
 ## Running the agent
 
+Single-game mode (original):
 ```bash
 python3 agent.py --app_id 1245620 --game_name "Elden Ring"
+```
+
+Multi-game mode (config file):
+```bash
+python3 agent.py --config games.json
 ```
 
 Each module also has its own `__main__` block for isolated testing:
@@ -54,6 +60,7 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 ## Key implementation details
 
 ### steam.py
+- `fetch_game_name(app_id)` calls `store.steampowered.com/api/appdetails` to resolve a display name from an App ID — used by `agent.py` when `--game_name` is omitted or a config entry has no `game_name`. Falls back to `"App ID {app_id}"` label on failure rather than aborting.
 - Hits `store.steampowered.com/appreviews/{app_id}` — no auth required
 - Cursor-based pagination with `filter=recent` (newest-first); stops as soon as a review timestamp falls outside the 7-day window — avoids paginating old reviews
 - Caps at 500 reviews via `random.sample()` if the window exceeds that
@@ -81,12 +88,16 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - First run: no trend section in the email — baseline is silently saved. Comparison starts on the second run
 - `trends.py --app_id <id>` prints the last saved run for inspection
 
+### agent.py / games.json
+- `--config games.json` runs the pipeline for every game in the file and sends one consolidated digest; `--app_id` still works for single-game runs (the two flags are mutually exclusive)
+- Per-game errors are skip-and-continue: a failed game is flagged in the email but doesn't abort the rest
+- `games.json` is a committed JSON array of `{app_id, game_name}` objects — edit it to add/remove tracked games
+- `send_multi_digest` in `email_sender.py` builds one HTML email with a card group per game plus a red "Failed Games" card when any game errors
+
 ## Upcoming Features
 
-- Multi-game tracking with a config file — accept a list of app IDs and game names, run the pipeline for each, send one consolidated digest
 - Scheduled execution — add a shell script or cron job so it actually runs every Monday morning without you touching it.
 - Confidence scores on themes — ask Claude to include a confidence score (0–1) per theme.
-- Game name lookup — call the Steam store API to resolve the game name from the App ID automatically, so you don't need --game_name.
 
 
 ## Git workflow

@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 import requests
 
 STEAM_REVIEWS_URL = "https://store.steampowered.com/appreviews/{app_id}"
+STEAM_DETAILS_URL = "https://store.steampowered.com/api/appdetails"
 MAX_REVIEWS = 500
 WINDOW_DAYS = 7
 PAGE_SIZE = 100  # Steam's max per request
@@ -101,6 +102,39 @@ def fetch_reviews(app_id: str) -> list[dict]:
         time.sleep(0.5)
 
     return _maybe_sample(collected)
+
+
+def fetch_game_name(app_id: str) -> str:
+    """
+    Return the game's display name from the Steam store API.
+    Raises SteamAPIError if the lookup fails or the App ID is unrecognised.
+    """
+    try:
+        response = requests.get(
+            STEAM_DETAILS_URL,
+            params={"appids": app_id, "filters": "basic"},
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.exceptions.ConnectionError as e:
+        raise SteamAPIError(f"Network error fetching game name: {e}") from e
+    except requests.exceptions.Timeout:
+        raise SteamAPIError("Request to Steam store API timed out.")
+    except requests.exceptions.HTTPError as e:
+        raise SteamAPIError(f"HTTP error from Steam store API: {e}") from e
+
+    payload = response.json()
+    entry = payload.get(str(app_id), {})
+    if not entry.get("success"):
+        raise SteamAPIError(
+            f"Steam store API returned no data for App ID '{app_id}'. "
+            "Check that the App ID is correct."
+        )
+
+    name = entry.get("data", {}).get("name", "").strip()
+    if not name:
+        raise SteamAPIError(f"Steam store API returned an empty name for App ID '{app_id}'.")
+    return name
 
 
 def _maybe_sample(reviews: list[dict]) -> list[dict]:

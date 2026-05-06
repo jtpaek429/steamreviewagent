@@ -57,8 +57,14 @@ ANALYSIS_TOOL = {
                             "items": {"type": "string"},
                             "maxItems": 2,
                         },
+                        "confidence": {
+                            "type": "number",
+                            "description": "Confidence score (0.0–1.0) that this is a genuine, distinct theme vs. noise.",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                        },
                     },
-                    "required": ["name", "description", "review_count", "sentiment", "representative_quotes"],
+                    "required": ["name", "description", "review_count", "sentiment", "representative_quotes", "confidence"],
                 },
             },
             "flagged_spikes": {

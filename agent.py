@@ -7,7 +7,7 @@ import argparse
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from steam import SteamAPIError, fetch_reviews
 

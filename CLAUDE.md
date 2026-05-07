@@ -85,8 +85,11 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 
 ### dashboard UI
 - **Summary cards (4):** Current Steam Rating (all-time, live from Steam API), Last 7-Day Rating (computed from latest run's vote ratio mapped to Steam's label scale), Last 7-Day AI Sentiment (Claude's `overall_sentiment`), Last Analysis Run (date + review count)
-- **Review Distribution chart:** grouped stacked bars per week — Steam votes (thumbs up/down) as left bar, AI theme sentiment (positive/mixed/negative proportions) as right bar. Both bars scaled to the same height (vote total) so proportions are visually comparable
-- **Top Themes chart:** horizontal bar chart with week-toggle buttons. Theme labels truncated to 26 chars; full name shown in tooltip. Colors reflect per-theme sentiment
+- **Last 7-Day Rating** uses a two-axis Steam model: positive % + review count bucket (1–49 / 50–499 / 500+). Shows a yellow "low sample size" warning when < 10 reviews. Returns `None` only when total = 0.
+- **Rating color scale** (9-step gradient): Overwhelmingly Positive → `green-500`, Very Positive → `green-400`, Mostly Positive / Positive → `green-300`, Mixed → `yellow-400`, Mostly Negative → `orange-400`, Negative → `red-400`, Very/Overwhelmingly Negative → `red-500`
+- **Sentiment Trend chart:** stacked bars of AI theme sentiment (positive/mixed/negative) per week. Raw theme sentiment counts — no scaling to vote totals. Whole-number y-axis ticks, 10% grace padding. Steam vote bars removed.
+- **Top Review Themes chart:** horizontal bar chart with week-toggle buttons, sorted by `review_count` descending. Theme labels truncated to 26 chars; tooltip sorts before index lookup so full name always matches the hovered bar. Whole-number x-axis ticks, 10% grace padding.
+- **AI sentiment color palette** (consistent across both charts): positive `rgba(74,222,128)`, mixed `rgba(251,146,60)`, negative `rgba(248,113,113)`. Bars render at 0.75 alpha at rest, 1.0 on hover.
 - Tailwind CDN + Chart.js v4 — no build step
 
 ### steam.py
@@ -103,6 +106,7 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - Schema: `review_count`, `overall_sentiment`, `themes[]` (name, description, review_count, sentiment, representative_quotes, confidence 0–1), `flagged_spikes[]`
 - Individual reviews are truncated to 300 chars before sending to Claude
 - Model: `claude-sonnet-4-6`
+- **Sub-theme splitting:** when a topic has clearly opposing camps, Claude splits it into two themes using " — Praised" / " — Criticized" suffixes (e.g. "Difficulty & Challenge — Praised" and "Difficulty & Challenge — Criticized") rather than collapsing into a single mixed theme
 
 ### email_sender.py
 - Named `email_sender.py` not `email.py` — `email.py` would shadow Python's stdlib `email` package and break `requests`

@@ -231,11 +231,14 @@ def game_detail(app_id: str):
         "ai_negative": [t[2] for t in theme_data],
     })
 
+    latest_with_themes = next((r for r in reversed(runs) if r.get("themes")), None)
+
     return render_template(
         "game.html",
         game=game,
         runs=runs,
         latest=latest,
+        latest_with_themes=latest_with_themes,
         chart_data=chart_data,
         steam_summary=steam_summary,
         recent_rating=recent_rating,

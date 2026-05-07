@@ -21,14 +21,14 @@ class SteamAPIError(Exception):
     pass
 
 
-def fetch_reviews(app_id: str) -> list[dict]:
+def fetch_reviews(app_id: str, window_days: int = WINDOW_DAYS) -> list[dict]:
     """
-    Return up to MAX_REVIEWS review dicts from the last WINDOW_DAYS days.
+    Return up to MAX_REVIEWS review dicts from the last window_days days.
     Each dict has keys: review (str), voted_up (bool), timestamp_created (int).
 
     Raises SteamAPIError on bad App ID, network failure, or Steam error response.
     """
-    cutoff_ts = int((datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)).timestamp())
+    cutoff_ts = int((datetime.now(timezone.utc) - timedelta(days=window_days)).timestamp())
 
     collected: list[dict] = []
     cursor = "*"
@@ -102,6 +102,39 @@ def fetch_reviews(app_id: str) -> list[dict]:
         time.sleep(0.5)
 
     return _maybe_sample(collected)
+
+
+def fetch_review_summary(app_id: str) -> dict:
+    """
+    Return the overall review summary for a game (all-time, all languages).
+    Dict has: review_score_desc, total_positive, total_negative, total_reviews.
+    Raises SteamAPIError on failure.
+    """
+    try:
+        response = requests.get(
+            STEAM_REVIEWS_URL.format(app_id=app_id),
+            params={"json": 1, "language": "all", "purchase_type": "all", "num_per_page": 1},
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.exceptions.ConnectionError as e:
+        raise SteamAPIError(f"Network error fetching review summary: {e}") from e
+    except requests.exceptions.Timeout:
+        raise SteamAPIError("Request to Steam API timed out.")
+    except requests.exceptions.HTTPError as e:
+        raise SteamAPIError(f"HTTP error from Steam API: {e}") from e
+
+    data = response.json()
+    if data.get("success") != 1:
+        raise SteamAPIError(f"Steam API returned an error for App ID '{app_id}'.")
+
+    summary = data.get("query_summary", {})
+    return {
+        "review_score_desc": summary.get("review_score_desc", "Unknown"),
+        "total_positive": summary.get("total_positive", 0),
+        "total_negative": summary.get("total_negative", 0),
+        "total_reviews": summary.get("total_reviews", 0),
+    }
 
 
 def fetch_game_name(app_id: str) -> str:

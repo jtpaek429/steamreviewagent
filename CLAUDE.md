@@ -5,10 +5,12 @@ This is a side project that a PM is making to explore agentic workflow automatio
 
 ## What this project does
 
-Agentic Python pipeline: pulls the last 7 days of Steam reviews for a given game, uses the Claude API to categorize reviews by theme and summarize sentiment, then sends an email digest via SendGrid.
+Agentic Python pipeline: pulls the last 7 days of Steam reviews for a given game, uses the Claude API to categorize reviews by theme and summarize sentiment, then sends an email digest via SendGrid. A Flask web dashboard provides a public-facing view of historical analysis data with admin controls.
 
 ```
 Steam API → raw reviews → Claude (categorize + summarize) → SendGrid (email)
+                                                          → SQLite (history.db)
+                                                          → Flask dashboard
 ```
 
 ## Running the agent
@@ -23,6 +25,12 @@ Multi-game mode (config file):
 python3 agent.py --config games.json
 ```
 
+Running the dashboard:
+```bash
+python3 app.py
+# opens at http://localhost:5000
+```
+
 Each module also has its own `__main__` block for isolated testing:
 
 ```bash
@@ -34,12 +42,15 @@ python3 email_sender.py --app_id 1245620 --game_name "Elden Ring"
 ## Project structure
 
 ```
-agent.py          # CLI entry point — orchestrates all three phases
+app.py            # Flask dashboard — routes, auth, backfill/refresh jobs
+agent.py          # CLI entry point — orchestrates all three pipeline phases
 steam.py          # Phase 1: fetches reviews from Steam public API
 analyze.py        # Phase 2: sends reviews to Claude, returns structured JSON
 email_sender.py   # Phase 3: formats JSON into HTML email, sends via SendGrid
-trends.py         # Trend storage + week-over-week spike detection (SQLite)
+trends.py         # DB layer — games table, runs table, trend spike detection
+templates/        # Jinja2 HTML templates (base, index, game, login, add_game, backfill_status)
 data/history.db   # SQLite DB — gitignored, created automatically on first run
+games.json        # Legacy multi-game config for CLI mode (not used by dashboard)
 requirements.txt
 .env.example      # copy to .env and fill in keys
 ```
@@ -53,16 +64,36 @@ ANTHROPIC_API_KEY=sk-ant-...
 SENDGRID_API_KEY=SG....
 FROM_EMAIL=you@example.com     # must match verified SendGrid sender
 TO_EMAIL=you@example.com
+
+# Dashboard
+FLASK_SECRET_KEY=...           # any long random string
+ADMIN_PASSWORD=...             # password for the admin login
 ```
 
 All `load_dotenv()` calls use `override=True` so `.env` always wins over shell env vars.
 
 ## Key implementation details
 
+### app.py (Flask dashboard)
+- Public routes: `/` (game cards), `/game/<app_id>` (detail with charts)
+- Admin routes (session-gated): `/admin/add`, `/admin/game/<id>/remove`, `/admin/game/<id>/refresh-votes`
+- Auth: single `ADMIN_PASSWORD` env var, Flask session cookie — no user system
+- Long-running jobs (backfill, vote refresh) run in daemon threads; frontend polls `/api/status/<job_id>` every 2s until complete
+- Job state is in-memory (`_jobs` dict + lock) — resets on server restart, which is fine
+- Smart re-add: if a removed game is re-added and runs already exist in the DB, runs the cheap vote refresh instead of the full Claude backfill
+- `init_db()` is called at module level so it runs on every startup
+
+### dashboard UI
+- **Summary cards (4):** Current Steam Rating (all-time, live from Steam API), Last 7-Day Rating (computed from latest run's vote ratio mapped to Steam's label scale), Last 7-Day AI Sentiment (Claude's `overall_sentiment`), Last Analysis Run (date + review count)
+- **Review Distribution chart:** grouped stacked bars per week — Steam votes (thumbs up/down) as left bar, AI theme sentiment (positive/mixed/negative proportions) as right bar. Both bars scaled to the same height (vote total) so proportions are visually comparable
+- **Top Themes chart:** horizontal bar chart with week-toggle buttons. Theme labels truncated to 26 chars; full name shown in tooltip. Colors reflect per-theme sentiment
+- Tailwind CDN + Chart.js v4 — no build step
+
 ### steam.py
-- `fetch_game_name(app_id)` calls `store.steampowered.com/api/appdetails` to resolve a display name from an App ID — used by `agent.py` when `--game_name` is omitted or a config entry has no `game_name`. Falls back to `"App ID {app_id}"` label on failure rather than aborting.
-- Hits `store.steampowered.com/appreviews/{app_id}` — no auth required
-- Cursor-based pagination with `filter=recent` (newest-first); stops as soon as a review timestamp falls outside the 7-day window — avoids paginating old reviews
+- `fetch_reviews(app_id, window_days=7)` — `window_days` is now a parameter (default 7) to support 30-day backfill fetches
+- `fetch_review_summary(app_id)` — single lightweight request returning `{review_score_desc, total_positive, total_negative, total_reviews}` for the all-time rating card
+- `fetch_game_name(app_id)` — resolves display name from Steam store API
+- Cursor-based pagination with `filter=recent` (newest-first); stops as soon as a review timestamp falls outside the window
 - Caps at 500 reviews via `random.sample()` if the window exceeds that
 - Deduplicates cursors to guard against Steam's occasional repeated-cursor bug
 - Raises `SteamAPIError` for bad App IDs, network failures, timeouts
@@ -80,24 +111,32 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - SendGrid expects status 202 on successful send
 
 ### trends.py
-- Persists each run's theme snapshot to `data/history.db` (SQLite, stdlib `sqlite3` — no new dependency)
-- Schema: one row per `(app_id, run_date)`; upserts so running the agent twice on the same day overwrites rather than duplicates
-- Spike detection is **proportion-based**: compares `theme_count / total_review_count` between weeks, not raw counts — handles weeks where the review volume differs
-- Threshold: ≥50% relative increase in proportion flags a spike. Chosen over 2x (too harsh) after considering that 100→175 out of 500 reviews (a meaningful real-world jump) is only a 75% relative increase, not 100%
-- Floor rules: existing themes need ≥10 reviews to be considered; new themes (not present last week) need ≥15 reviews to be flagged
-- First run: no trend section in the email — baseline is silently saved. Comparison starts on the second run
-- `trends.py --app_id <id>` prints the last saved run for inspection
+- **`games` table:** `(id, app_id, game_name, added_at)` — source of truth for which games the dashboard tracks. Separate from `runs` so removing a game from the dashboard doesn't delete historical data
+- **`runs` table:** one row per `(app_id, run_date)`; upserts so re-running on the same date overwrites. Columns: `review_count`, `overall_sentiment`, `themes_json`, `positive_count`, `negative_count`
+- `save_run()` accepts optional `run_date` (for backfill) and `positive_count`/`negative_count` (actual Steam vote counts)
+- `get_all_runs(app_id)` returns all runs oldest-first for charting
+- `update_run_vote_counts()` updates only the vote columns on an existing run — used by the vote refresh job (no Claude calls)
+- Spike detection is **proportion-based**: compares `theme_count / total_review_count` between weeks. Threshold: ≥50% relative increase. Floor rules: ≥10 reviews for existing themes, ≥15 for new themes
+- First run: baseline saved silently; trend comparison starts on the second run
+- SQLite migration handled in `init_db()` via `ALTER TABLE ADD COLUMN` wrapped in try/except for existing DBs
 
 ### agent.py / games.json
-- `--config games.json` runs the pipeline for every game in the file and sends one consolidated digest; `--app_id` still works for single-game runs (the two flags are mutually exclusive)
+- `--config games.json` runs the pipeline for every game in the file and sends one consolidated digest; `--app_id` still works for single-game runs (mutually exclusive)
 - Per-game errors are skip-and-continue: a failed game is flagged in the email but doesn't abort the rest
-- `games.json` is a committed JSON array of `{app_id, game_name}` objects — edit it to add/remove tracked games
+- `games.json` is a legacy config for CLI mode — the dashboard manages games via the `games` DB table instead
 - `send_multi_digest` in `email_sender.py` builds one HTML email with a card group per game plus a red "Failed Games" card when any game errors
+- Weekly runs pass `positive_count`/`negative_count` to `save_run()` so vote data is stored from CLI runs too
 
 ### schedule.sh / run_weekly.sh
 - `run_weekly.sh` — wrapper invoked by cron; `cd`s to the project dir, runs `agent.py --config games.json`, appends stdout/stderr to `data/run_weekly.log`
 - `schedule.sh` — manages the cron entry with `--enable` (Mondays 8 AM), `--disable`, `--status`; uses a `# steam-review-agent` marker to find/remove its own cron line without touching other jobs
 
+## Pending deployment decisions
+
+- **SQLite persistence on Railway** — Railway's filesystem is ephemeral; a Railway Volume (persistent disk) is needed before deploying so `history.db` survives redeploys
+- **Cron on Railway vs local** — whether to migrate `run_weekly.sh` to Railway's built-in scheduler (so runs happen even when laptop is off)
+- **60/90 day backfill** — the UI currently only offers a 30-day window; easy to add options, deferred to control Claude API costs
+- **Deployment target** — Railway, with DNS pointed at `reviews.jonathanpaek.com`
 
 ## Git workflow
 

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Add Game · Steam Review Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+  <div class="mb-6">
+    <a href="/" class="text-sm text-gray-400 hover:text-white transition-colors">&larr; Back to dashboard</a>
+  </div>
+
+  <h1 class="text-xl font-bold mb-2">Add Game</h1>
+  <p class="text-sm text-gray-400 mb-6">
+    Enter a Steam App ID to start tracking. We'll fetch and analyze the last 30 days of reviews.
+  </p>
+
+  <form method="post"
+        class="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
+    {% if error %}
+    <p class="text-red-400 text-sm">{{ error }}</p>
+    {% endif %}
+
+    <div>
+      <label class="block text-sm text-gray-400 mb-1" for="app_id">Steam App ID</label>
+      <input id="app_id" type="text" name="app_id" placeholder="e.g. 1245620" autofocus
+             class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white
+                    focus:outline-none focus:border-blue-500 transition-colors">
+      <p class="text-xs text-gray-500 mt-1.5">
+        Find the App ID in the game's Steam store URL:
+        <span class="text-gray-400">store.steampowered.com/app/<span class="text-blue-400">1245620</span>/</span>
+      </p>
+    </div>
+
+    <button type="submit"
+            class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded font-medium transition-colors">
+      Add Game &amp; Run Backfill
+    </button>
+  </form>
+</div>
+{% endblock %}

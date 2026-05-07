@@ -121,7 +121,7 @@
         onclick="showWeek('{{ run.run_date }}')"
         id="btn-{{ run.run_date }}"
         class="week-btn text-xs px-2.5 py-1 rounded-full border transition-colors
-               {% if loop.first %}bg-blue-600 border-blue-600 text-white
+               {% if run.run_date == latest_with_themes.run_date %}bg-blue-600 border-blue-600 text-white
                {% else %}bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200{% endif %}">
         {{ run.run_date }}
       </button>
@@ -131,7 +131,7 @@
     <p class="text-xs text-gray-500 mb-4">Latest run</p>
     {% endif %}
 
-    {% if latest and latest.themes %}
+    {% if latest_with_themes %}
       <canvas id="themesChart"></canvas>
     {% else %}
       <p class="text-sm text-gray-500">No theme data available.</p>
@@ -273,11 +273,11 @@ new Chart(document.getElementById('activityChart'), {
   }
 });
 
-{% if latest and latest.themes %}
+{% if latest_with_themes %}
 // Themes chart
 const themesChart = new Chart(document.getElementById('themesChart'), {
   type: 'bar',
-  data: buildThemesData({{ latest.run_date | tojson }}),
+  data: buildThemesData({{ latest_with_themes.run_date | tojson }}),
   options: {
     indexAxis: 'y',
     responsive: true,
@@ -317,7 +317,7 @@ function buildThemesData(runDate) {
   };
 }
 
-let activeDate = {{ latest.run_date | tojson }};
+let activeDate = {{ latest_with_themes.run_date | tojson }};
 
 function showWeek(runDate) {
   activeDate = runDate;

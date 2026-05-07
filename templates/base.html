@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Steam Review Dashboard{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <nav class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <a href="/" class="text-base font-semibold text-white tracking-tight">
+      🎮 Steam Review Dashboard
+    </a>
+    <div class="flex items-center gap-4">
+      {% if is_admin %}
+        <a href="/admin/add"
+           class="text-sm bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-md transition-colors">
+          + Add Game
+        </a>
+        <form method="post" action="/logout" class="inline">
+          <button class="text-sm text-gray-400 hover:text-white transition-colors">Log out</button>
+        </form>
+      {% else %}
+        <a href="/login" class="text-sm text-gray-400 hover:text-white transition-colors">Admin</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

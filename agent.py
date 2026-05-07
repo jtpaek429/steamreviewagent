@@ -57,9 +57,12 @@ def run_one(app_id: str, game_name: str) -> dict:
                 "analysis": None, "trend_spikes": [], "error": f"Analysis failed: {e}"}
     print(f"            → {len(analysis.get('themes', []))} theme(s)")
 
+    positive_count = sum(1 for r in reviews if r["voted_up"])
+    negative_count = len(reviews) - positive_count
+
     previous_run = load_last_run(app_id)
     trend_spikes = compute_trends(analysis, previous_run) if previous_run else []
-    save_run(app_id, analysis)
+    save_run(app_id, analysis, positive_count=positive_count, negative_count=negative_count)
 
     if previous_run:
         print(f"            → {len(trend_spikes)} trend spike(s) vs {previous_run['run_date']}")

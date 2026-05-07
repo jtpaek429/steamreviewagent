@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Tracked Games</h1>
+</div>
+
+{% if not games %}
+<div class="text-center py-20 text-gray-500">
+  <p class="text-4xl mb-4">🎮</p>
+  <p class="text-lg mb-2">No games tracked yet.</p>
+  {% if is_admin %}
+    <a href="/admin/add" class="text-blue-400 hover:text-blue-300 transition-colors">+ Add your first game</a>
+  {% else %}
+    <p class="text-sm mt-1">Log in as admin to add games.</p>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for game in games %}
+  <a href="/game/{{ game.app_id }}"
+     class="block bg-gray-900 border border-gray-800 rounded-lg p-5 hover:border-gray-600 transition-colors group">
+
+    <div class="flex items-start justify-between gap-2 mb-3">
+      <h2 class="font-semibold text-white group-hover:text-blue-300 transition-colors leading-snug">
+        {{ game.game_name }}
+      </h2>
+      {% if game.latest_run %}
+        {% set s = game.latest_run.overall_sentiment %}
+        <span class="shrink-0 text-xs px-2 py-0.5 rounded-full
+          {% if s == 'positive' %}bg-green-900 text-green-300
+          {% elif s == 'negative' %}bg-red-900 text-red-300
+          {% else %}bg-yellow-900 text-yellow-300{% endif %}">
+          {{ s }}
+        </span>
+      {% endif %}
+    </div>
+
+    {% if game.latest_run %}
+      <p class="text-sm text-gray-400 mb-3">
+        {{ game.latest_run.review_count }} reviews &middot; {{ game.latest_run.run_date }}
+      </p>
+      <div class="flex flex-wrap gap-1">
+        {% for theme in game.latest_run.themes[:3] %}
+          <span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded">{{ theme.name }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm text-gray-500 italic">No runs yet</p>
+    {% endif %}
+
+    <p class="text-xs text-gray-600 mt-3">
+      {{ game.run_count }} run{{ 's' if game.run_count != 1 }} &middot; App ID {{ game.app_id }}
+    </p>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

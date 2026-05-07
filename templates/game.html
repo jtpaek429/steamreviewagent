@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}{{ game.game_name }} · Steam Review Dashboard{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-6">
+  <a href="/" class="text-sm text-gray-400 hover:text-white transition-colors">&larr; All games</a>
+</div>
+
+<div class="mb-8">
+  <h1 class="text-2xl font-bold mb-1">{{ game.game_name }}</h1>
+  <p class="text-sm text-gray-500">App ID {{ game.app_id }} &middot; {{ runs|length }} run{{ 's' if runs|length != 1 }}</p>
+</div>
+
+{% if not runs %}
+<div class="text-center py-20 text-gray-500">
+  <p class="text-lg">No analysis runs yet.</p>
+</div>
+
+{% else %}
+
+<!-- Summary cards -->
+{% if latest %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+
+  {% macro rating_color(r) %}
+    {% if 'Overwhelmingly Positive' in r or 'Very Positive' in r %}text-green-300
+    {% elif 'Mostly Positive' in r or r == 'Positive' %}text-green-500
+    {% elif 'Mixed' in r %}text-yellow-400
+    {% elif 'Mostly Negative' in r or r == 'Negative' %}text-red-400
+    {% else %}text-red-300{% endif %}
+  {% endmacro %}
+
+  <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <p class="text-xs text-gray-500 mb-1">Current Steam Rating</p>
+    {% if steam_summary %}
+      {% set rating = steam_summary.review_score_desc %}
+      <p class="text-base font-semibold {{ rating_color(rating) }}">{{ rating }}</p>
+      <p class="text-xs text-gray-500 mt-1">{{ "{:,}".format(steam_summary.total_reviews) }} total reviews</p>
+    {% else %}
+      <p class="text-base font-semibold text-gray-500">Unavailable</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <p class="text-xs text-gray-500 mb-1">Last 7-Day Steam Rating</p>
+    {% if recent_rating %}
+      <p class="text-base font-semibold {{ rating_color(recent_rating) }}">{{ recent_rating }}</p>
+      <p class="text-xs text-gray-500 mt-1">{{ latest.positive_count }}↑ {{ latest.negative_count }}↓ in last run</p>
+    {% else %}
+      <p class="text-base font-semibold text-gray-500">No vote data</p>
+      <p class="text-xs text-gray-500 mt-1">Run vote refresh to populate</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <p class="text-xs text-gray-500 mb-1">Last 7-Day AI Sentiment Analysis</p>
+    {% set s = latest.overall_sentiment %}
+    <p class="text-base font-semibold
+      {% if s == 'positive' %}text-green-400
+      {% elif s == 'negative' %}text-red-400
+      {% else %}text-yellow-400{% endif %}">
+      {{ s | capitalize }}
+    </p>
+    <p class="text-xs text-gray-500 mt-1">{{ latest.themes|length }} themes identified</p>
+  </div>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <p class="text-xs text-gray-500 mb-1">Last Analysis Run</p>
+    <p class="text-base font-semibold text-white">{{ latest.run_date }}</p>
+    <p class="text-xs text-gray-500 mt-1">{{ latest.review_count }} reviews analyzed</p>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+  <!-- Review distribution chart -->
+  <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
+    <h2 class="font-semibold mb-1">Review Distribution</h2>
+    <p class="text-xs text-gray-500 mb-4">Per week: Steam votes (left bar) vs AI sentiment (right bar)</p>
+    {% if runs|length == 1 %}
+      <p class="text-xs text-yellow-600 mb-3">Only one run — trend will appear after more weekly runs.</p>
+    {% endif %}
+    <canvas id="activityChart"></canvas>
+    <div class="flex flex-col gap-1.5 mt-3">
+      <div class="flex items-center gap-4">
+        <span class="text-xs text-gray-500 font-medium w-20 shrink-0">Steam votes:</span>
+        <span class="flex items-center gap-1.5 text-xs text-gray-400">
+          <span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(34,197,94,0.7)"></span> Thumbs up
+        </span>
+        <span class="flex items-center gap-1.5 text-xs text-gray-400">
+          <span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(239,68,68,0.7)"></span> Thumbs down
+        </span>
+      </div>
+      <div class="flex items-center gap-4">
+        <span class="text-xs text-gray-500 font-medium w-20 shrink-0">AI sentiment:</span>
+        <span class="flex items-center gap-1.5 text-xs text-gray-400">
+          <span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(134,239,172,0.7)"></span> Positive
+        </span>
+        <span class="flex items-center gap-1.5 text-xs text-gray-400">
+          <span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(253,224,71,0.7)"></span> Mixed
+        </span>
+        <span class="flex items-center gap-1.5 text-xs text-gray-400">
+          <span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(252,165,165,0.7)"></span> Negative
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Themes chart with week toggle -->
+  <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
+    <h2 class="font-semibold mb-3">Top Themes</h2>
+
+    {% if runs|length > 1 %}
+    <div id="week-toggles" class="flex flex-wrap gap-1.5 mb-4">
+      {% for run in runs | reverse %}
+      <button
+        onclick="showWeek('{{ run.run_date }}')"
+        id="btn-{{ run.run_date }}"
+        class="week-btn text-xs px-2.5 py-1 rounded-full border transition-colors
+               {% if loop.first %}bg-blue-600 border-blue-600 text-white
+               {% else %}bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200{% endif %}">
+        {{ run.run_date }}
+      </button>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-gray-500 mb-4">Latest run</p>
+    {% endif %}
+
+    {% if latest and latest.themes %}
+      <canvas id="themesChart"></canvas>
+    {% else %}
+      <p class="text-sm text-gray-500">No theme data available.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Admin actions -->
+{% if is_admin %}
+<div class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-4">Admin</h2>
+  <div class="flex flex-wrap gap-3">
+    <form method="post" action="/admin/game/{{ game.app_id }}/refresh-votes">
+      <button type="submit"
+              class="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-md transition-colors">
+        Refresh vote counts
+      </button>
+    </form>
+    <form method="post" action="/admin/game/{{ game.app_id }}/remove"
+          onsubmit="return confirm('Remove {{ game.game_name }} from the dashboard? Run data is preserved.')">
+      <button type="submit"
+              class="text-sm bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-300 px-3 py-1.5 rounded-md transition-colors">
+        Remove game
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Run history table -->
+<div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
+  <h2 class="font-semibold mb-4">Run History</h2>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-gray-400 border-b border-gray-800 text-left">
+        <th class="pb-2 font-medium">Date</th>
+        <th class="pb-2 font-medium">Sentiment</th>
+        <th class="pb-2 font-medium text-right">Reviews</th>
+        <th class="pb-2 font-medium text-right">Themes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs | reverse %}
+      <tr class="border-b border-gray-800/50 last:border-0">
+        <td class="py-2.5 text-gray-300">{{ run.run_date }}</td>
+        <td class="py-2.5">
+          {% set s = run.overall_sentiment %}
+          <span class="text-xs px-2 py-0.5 rounded-full
+            {% if s == 'positive' %}bg-green-900 text-green-300
+            {% elif s == 'negative' %}bg-red-900 text-red-300
+            {% else %}bg-yellow-900 text-yellow-300{% endif %}">
+            {{ s }}
+          </span>
+        </td>
+        <td class="py-2.5 text-right text-gray-300">{{ run.review_count }}</td>
+        <td class="py-2.5 text-right text-gray-300">{{ run.themes|length }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+const chartData = {{ chart_data | safe }};
+
+// All weeks' theme data keyed by run_date
+const allWeeksThemes = {
+  {% for run in runs %}
+  "{{ run.run_date }}": {{ run.themes | tojson }}{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+
+const gridColor = '#1f2937';
+const tickColor = '#6b7280';
+
+const sentimentColor = (s, alpha) => {
+  if (s === 'positive') return `rgba(34,197,94,${alpha})`;
+  if (s === 'negative') return `rgba(239,68,68,${alpha})`;
+  return `rgba(234,179,8,${alpha})`;
+};
+
+// Grouped stacked bar chart — Steam votes (left) + AI sentiment (right) per week
+new Chart(document.getElementById('activityChart'), {
+  type: 'bar',
+  data: {
+    labels: chartData.labels,
+    datasets: [
+      {
+        label: 'Thumbs up',
+        data: chartData.positive_counts,
+        backgroundColor: 'rgba(34,197,94,0.7)',
+        borderWidth: 0,
+        stack: 'steam',
+      },
+      {
+        label: 'Thumbs down',
+        data: chartData.negative_counts,
+        backgroundColor: 'rgba(239,68,68,0.7)',
+        borderWidth: 0,
+        stack: 'steam',
+      },
+      {
+        label: 'AI Positive',
+        data: chartData.ai_positive,
+        backgroundColor: 'rgba(134,239,172,0.7)',
+        borderWidth: 0,
+        stack: 'ai',
+      },
+      {
+        label: 'AI Mixed',
+        data: chartData.ai_mixed,
+        backgroundColor: 'rgba(253,224,71,0.7)',
+        borderWidth: 0,
+        stack: 'ai',
+      },
+      {
+        label: 'AI Negative',
+        data: chartData.ai_negative,
+        backgroundColor: 'rgba(252,165,165,0.7)',
+        borderWidth: 0,
+        stack: 'ai',
+      },
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (item) => {
+            const i = item.dataIndex;
+            const val = item.raw;
+            const stack = item.dataset.stack;
+            const total = stack === 'steam'
+              ? chartData.positive_counts[i] + chartData.negative_counts[i]
+              : chartData.ai_positive[i] + chartData.ai_mixed[i] + chartData.ai_negative[i];
+            const pct = total ? Math.round(val / total * 100) : 0;
+            return `${item.dataset.label}: ${val} (${pct}%)`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: { stacked: true, ticks: { color: tickColor }, grid: { color: gridColor } },
+      y: { stacked: true, beginAtZero: true, ticks: { color: tickColor }, grid: { color: gridColor } },
+    },
+  }
+});
+
+{% if latest and latest.themes %}
+// Themes chart
+const themesChart = new Chart(document.getElementById('themesChart'), {
+  type: 'bar',
+  data: buildThemesData({{ latest.run_date | tojson }}),
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items) => {
+            const i = items[0].dataIndex;
+            const themes = (allWeeksThemes[activeDate] || []).slice(0, 8);
+            return themes[i]?.name ?? items[0].label;
+          }
+        }
+      }
+    },
+    scales: {
+      x: { ticks: { color: tickColor }, grid: { color: gridColor } },
+      y: { ticks: { color: tickColor }, grid: { color: gridColor } },
+    },
+  }
+});
+
+function truncateLabel(str, maxLen = 26) {
+  return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
+}
+
+function buildThemesData(runDate) {
+  const themes = (allWeeksThemes[runDate] || []).slice(0, 8);
+  return {
+    labels: themes.map(t => truncateLabel(t.name)),
+    datasets: [{
+      data: themes.map(t => t.review_count),
+      backgroundColor: themes.map(t => sentimentColor(t.sentiment, 0.6)),
+      borderRadius: 4,
+    }]
+  };
+}
+
+let activeDate = {{ latest.run_date | tojson }};
+
+function showWeek(runDate) {
+  activeDate = runDate;
+
+  // Update chart
+  const newData = buildThemesData(runDate);
+  themesChart.data.labels = newData.labels;
+  themesChart.data.datasets = newData.datasets;
+  themesChart.update();
+
+  // Update toggle button styles
+  document.querySelectorAll('.week-btn').forEach(btn => {
+    const isActive = btn.id === `btn-${runDate}`;
+    btn.className = btn.className
+      .replace(/bg-blue-600 border-blue-600 text-white/, '')
+      .replace(/bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200/, '')
+      .trim();
+    btn.className += isActive
+      ? ' bg-blue-600 border-blue-600 text-white'
+      : ' bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200';
+  });
+}
+{% endif %}
+</script>
+
+{% endif %}
+{% endblock %}

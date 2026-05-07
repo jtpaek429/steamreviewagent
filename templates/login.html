@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login · Steam Review Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-sm mx-auto mt-16">
+  <h1 class="text-xl font-bold mb-6 text-center">Admin Login</h1>
+
+  <form method="post"
+        class="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
+    {% if error %}
+    <p class="text-red-400 text-sm">{{ error }}</p>
+    {% endif %}
+
+    <div>
+      <label class="block text-sm text-gray-400 mb-1" for="password">Password</label>
+      <input id="password" type="password" name="password" autofocus
+             class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white
+                    focus:outline-none focus:border-blue-500 transition-colors">
+    </div>
+
+    <button type="submit"
+            class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded font-medium transition-colors">
+      Log in
+    </button>
+  </form>
+
+  <p class="text-center mt-4">
+    <a href="/" class="text-sm text-gray-500 hover:text-gray-300 transition-colors">&larr; Back to dashboard</a>
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Adding Game · Steam Review Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-16 text-center">
+
+  <h1 class="text-xl font-bold mb-2">Adding {{ game_name }}</h1>
+  <p class="text-sm text-gray-400 mb-8">Fetching and analyzing the last 30 days of reviews week by week.</p>
+
+  <div id="spinner" class="flex justify-center mb-6">
+    <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+
+  <p id="status-message" class="text-gray-400 mb-8">Starting backfill...</p>
+
+  <div id="done-section" class="hidden space-y-3">
+    <p id="done-message" class="text-green-400 font-medium"></p>
+    <a href="{{ next_url }}" class="inline-block bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded font-medium transition-colors">
+      Continue
+    </a>
+  </div>
+
+  <div id="error-section" class="hidden">
+    <p id="error-message" class="text-red-400 mb-4"></p>
+    <a href="/admin/add" class="text-sm text-gray-400 hover:text-white transition-colors">Try again</a>
+  </div>
+
+</div>
+
+<script>
+const jobId = "{{ job_id }}";
+
+async function poll() {
+  try {
+    const res = await fetch(`/api/status/${jobId}`);
+    const data = await res.json();
+
+    document.getElementById('status-message').textContent = data.message;
+
+    if (data.status === 'complete') {
+      document.getElementById('spinner').classList.add('hidden');
+      document.getElementById('status-message').classList.add('hidden');
+      document.getElementById('done-message').textContent = data.message;
+      document.getElementById('done-section').classList.remove('hidden');
+      setTimeout(() => { window.location.href = "{{ next_url }}"; }, 2000);
+      return;
+    }
+
+    if (data.status === 'error') {
+      document.getElementById('spinner').classList.add('hidden');
+      document.getElementById('status-message').classList.add('hidden');
+      document.getElementById('error-message').textContent = data.message;
+      document.getElementById('error-section').classList.remove('hidden');
+      return;
+    }
+
+    setTimeout(poll, 2000);
+  } catch (e) {
+    setTimeout(poll, 3000);
+  }
+}
+
+poll();
+</script>
+{% endblock %}

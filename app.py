@@ -145,39 +145,40 @@ def _run_vote_refresh(app_id: str, job_id: str) -> None:
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _steam_style_rating(positive: int, negative: int) -> str | None:
-    """Map thumbs up/down counts to Steam's review rating labels."""
+    """Map thumbs up/down counts to Steam's review rating labels.
+
+    Mirrors Steam's two-axis model: positive % + review count bucket.
+    Buckets: 10–49 / 50–499 / 500+  (fewer than 10 → no label)
+    """
     total = positive + negative
     if total == 0:
         return None
     pct = positive / total
+
     if pct >= 0.95:
-        return "Overwhelmingly Positive"
-    if pct >= 0.85:
-        return "Very Positive"
+        return "Overwhelmingly Positive" if total >= 500 else ("Very Positive" if total >= 50 else "Positive")
+    if pct >= 0.80:
+        return "Very Positive" if total >= 50 else "Positive"
     if pct >= 0.70:
         return "Mostly Positive"
     if pct >= 0.40:
         return "Mixed"
-    if pct >= 0.25:
+    if pct >= 0.20:
         return "Mostly Negative"
-    return "Overwhelmingly Negative"
+    # 0–19 %
+    if total >= 500:
+        return "Overwhelmingly Negative"
+    if total >= 50:
+        return "Very Negative"
+    return "Negative"
 
 
-def _theme_sentiment_scaled(run: dict) -> tuple[int, int, int]:
-    """
-    Sum theme review counts by sentiment, then scale proportionally so the
-    total equals the vote count (positive + negative). This ensures the AI bar
-    sits at the same height as the Steam vote bar in the grouped chart.
-    """
+def _theme_sentiment_counts(run: dict) -> tuple[int, int, int]:
+    """Sum theme review counts by sentiment bucket."""
     pos = sum(t["review_count"] for t in run["themes"] if t["sentiment"] == "positive")
     mix = sum(t["review_count"] for t in run["themes"] if t["sentiment"] == "mixed")
     neg = sum(t["review_count"] for t in run["themes"] if t["sentiment"] == "negative")
-    theme_total = pos + mix + neg
-    if theme_total == 0:
-        return 0, 0, 0
-    vote_total = run["positive_count"] + run["negative_count"]
-    scale = (vote_total or run["review_count"] or 1) / theme_total
-    return round(pos * scale), round(mix * scale), round(neg * scale)
+    return pos, mix, neg
 
 
 def _enrich_games(games: list[dict]) -> list[dict]:
@@ -212,12 +213,14 @@ def game_detail(app_id: str):
         steam_summary = None
 
     recent_rating = None
+    rating_low_sample = False
     if latest:
         recent_rating = _steam_style_rating(
             latest["positive_count"], latest["negative_count"]
         )
+        rating_low_sample = (latest["positive_count"] + latest["negative_count"]) < 10
 
-    theme_data = [_theme_sentiment_scaled(r) for r in runs]
+    theme_data = [_theme_sentiment_counts(r) for r in runs]
     chart_data = json.dumps({
         "labels": [r["run_date"] for r in runs],
         "sentiments": [r["overall_sentiment"] for r in runs],
@@ -236,6 +239,7 @@ def game_detail(app_id: str):
         chart_data=chart_data,
         steam_summary=steam_summary,
         recent_rating=recent_rating,
+        rating_low_sample=rating_low_sample,
         is_admin=session.get("is_admin"),
     )
 

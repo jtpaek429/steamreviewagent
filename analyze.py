@@ -36,7 +36,7 @@ ANALYSIS_TOOL = {
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Short label for the theme (e.g. 'Difficulty', 'Performance').",
+                            "description": "Short label for the theme (e.g. 'Difficulty & Challenge — Praised', 'Performance Issues'). When a topic has clearly opposing camps, use ' — Praised' / ' — Criticized' suffixes and emit two separate themes instead of one mixed theme.",
                         },
                         "description": {
                             "type": "string",
@@ -109,7 +109,11 @@ def analyze_reviews(reviews: list[dict]) -> dict:
             "You are a game analytics assistant. "
             "Analyze the provided Steam reviews and identify recurring themes, "
             "sentiment, and any notable spikes or anomalies. "
-            "Be concise and data-driven."
+            "Be concise and data-driven. "
+            "When a topic has clearly opposing camps — some reviewers love it, others hate it — "
+            "split it into two separate themes using ' — Praised' and ' — Criticized' suffixes "
+            "(e.g. 'Difficulty & Challenge — Praised' and 'Difficulty & Challenge — Criticized') "
+            "rather than labelling the combined theme as mixed."
         ),
         messages=[
             {

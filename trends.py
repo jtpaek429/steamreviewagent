@@ -8,7 +8,7 @@ import os
 import sqlite3
 from datetime import date
 
-DB_PATH = os.path.join("data", "history.db")
+DB_PATH = os.environ.get("DB_PATH", os.path.join("data", "history.db"))
 
 SPIKE_THRESHOLD = 0.50  # 50% relative increase in proportion triggers a flag
 MIN_REVIEWS = 10        # theme must have ≥10 reviews this week to be considered

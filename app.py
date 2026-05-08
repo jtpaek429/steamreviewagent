@@ -20,6 +20,7 @@ from analyze import analyze_reviews
 from steam import SteamAPIError, fetch_game_name, fetch_review_summary, fetch_reviews
 from trends import (
     add_game,
+    delete_runs_except,
     get_all_runs,
     get_game,
     get_games,
@@ -67,29 +68,49 @@ def admin_required(f):
     return decorated
 
 
+# ── Week window helpers ────────────────────────────────────────────────────────
+
+def _get_week_windows(n: int = 4) -> list[tuple[int, int, str]]:
+    """
+    Return the n most recently completed Mon–Sun UTC weeks as
+    (start_ts, end_ts_exclusive, sunday_date_iso).
+
+    start_ts  = Monday 00:00 UTC
+    end_ts    = following Monday 00:00 UTC  (exclusive upper bound)
+    sunday_date = ISO date of the Sunday that ends the window
+    """
+    now = datetime.now(timezone.utc)
+    days_since_monday = now.weekday()  # 0=Mon … 6=Sun
+    current_week_monday = (now - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    weeks = []
+    for i in range(n):
+        week_end_monday = current_week_monday - timedelta(weeks=i)      # exclusive end
+        week_start_monday = week_end_monday - timedelta(weeks=1)
+        sunday_date = (week_end_monday - timedelta(days=1)).date().isoformat()
+        weeks.append((
+            int(week_start_monday.timestamp()),
+            int(week_end_monday.timestamp()),
+            sunday_date,
+        ))
+    return weeks
+
+
 # ── Background jobs ────────────────────────────────────────────────────────────
 
 def _run_backfill(app_id: str, job_id: str) -> None:
-    """Fetches 30 days of reviews week by week, runs Claude analysis per week."""
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    week_secs = 7 * 24 * 3600
+    """Fetches the 4 most recent complete Mon–Sun weeks, runs Claude per week, then
+    deletes any old non-aligned runs so the chart stays clean."""
+    weeks = _get_week_windows(4)
     completed_weeks = 0
+    saved_dates: list[str] = []
 
-    for week_num in range(4):
-        end_ts = now_ts - week_num * week_secs
-        start_ts = end_ts - week_secs
-
+    for week_num, (start_ts, end_ts, sunday_date) in enumerate(weeks):
         try:
             _update_job(job_id, "running",
                         f"Fetching week {week_num + 1} of 4 from Steam...")
-            # Fetch only the reviews that fall in this specific week window.
-            # window_days covers from now back to start_ts; end_cutoff_ts caps
-            # the upper bound so we don't collect more recent reviews.
-            reviews = fetch_reviews(
-                app_id,
-                window_days=(week_num + 1) * 7,
-                end_cutoff_ts=end_ts,
-            )
+            reviews = fetch_reviews(app_id, start_cutoff_ts=start_ts, end_cutoff_ts=end_ts)
         except SteamAPIError as e:
             _update_job(job_id, "error", f"Steam fetch failed on week {week_num + 1}: {e}")
             return
@@ -107,12 +128,52 @@ def _run_backfill(app_id: str, job_id: str) -> None:
 
         positive_count = sum(1 for r in reviews if r["voted_up"])
         negative_count = len(reviews) - positive_count
-        run_date = datetime.fromtimestamp(end_ts, tz=timezone.utc).date().isoformat()
-        save_run(app_id, analysis, run_date=run_date,
+        save_run(app_id, analysis, run_date=sunday_date,
                  positive_count=positive_count, negative_count=negative_count)
+        saved_dates.append(sunday_date)
         completed_weeks += 1
 
-    _update_job(job_id, "complete", f"Done — {completed_weeks} week(s) analyzed.")
+    # Remove any runs that don't align to the canonical Mon–Sun windows
+    if saved_dates:
+        deleted = delete_runs_except(app_id, saved_dates)
+        suffix = f" ({deleted} old run(s) removed)" if deleted else ""
+    else:
+        suffix = ""
+
+    _update_job(job_id, "complete", f"Done — {completed_weeks} week(s) analyzed{suffix}.")
+
+
+def _run_single_week(app_id: str, sunday_date: str, job_id: str) -> None:
+    """Re-analyze one specific Mon–Sun week identified by its Sunday date (YYYY-MM-DD)."""
+    sunday = datetime.strptime(sunday_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    week_start = sunday - timedelta(days=6)   # Monday 00:00 UTC
+    start_ts = int(week_start.timestamp())
+    end_ts = int((sunday + timedelta(days=1)).timestamp())  # following Monday 00:00 UTC
+
+    try:
+        _update_job(job_id, "running", f"Fetching reviews for week of {sunday_date}...")
+        reviews = fetch_reviews(app_id, start_cutoff_ts=start_ts, end_cutoff_ts=end_ts)
+    except SteamAPIError as e:
+        _update_job(job_id, "error", f"Steam fetch failed: {e}")
+        return
+
+    if not reviews:
+        _update_job(job_id, "complete", "No reviews found in that week window.")
+        return
+
+    try:
+        _update_job(job_id, "running", f"Analyzing {len(reviews)} reviews...")
+        analysis = analyze_reviews(reviews)
+    except Exception as e:
+        _update_job(job_id, "error", f"Analysis failed: {e}")
+        return
+
+    positive_count = sum(1 for r in reviews if r["voted_up"])
+    negative_count = len(reviews) - positive_count
+    save_run(app_id, analysis, run_date=sunday_date,
+             positive_count=positive_count, negative_count=negative_count)
+    _update_job(job_id, "complete",
+                f"Done — {len(reviews)} reviews analyzed for week of {sunday_date}.")
 
 
 def _run_vote_refresh(app_id: str, job_id: str) -> None:
@@ -246,6 +307,26 @@ def game_detail(app_id: str):
 
     latest_with_themes = next((r for r in reversed(runs) if r.get("themes")), None)
 
+    latest_week_label = None
+    if latest:
+        sunday = datetime.strptime(latest["run_date"], "%Y-%m-%d")
+        monday = sunday - timedelta(days=6)
+        latest_week_label = (
+            f"{monday.strftime('%b %-d')} – {sunday.strftime('%b %-d, %Y')}"
+        )
+
+    existing_run_dates = {r["run_date"] for r in runs}
+    weeks_for_admin = []
+    for start_ts, end_ts, sunday_date in _get_week_windows(8):
+        monday_date = (
+            datetime.strptime(sunday_date, "%Y-%m-%d") - timedelta(days=6)
+        ).strftime("%Y-%m-%d")
+        weeks_for_admin.append({
+            "sunday_date": sunday_date,
+            "label": f"{monday_date} – {sunday_date}",
+            "has_run": sunday_date in existing_run_dates,
+        })
+
     return render_template(
         "game.html",
         game=game,
@@ -256,6 +337,8 @@ def game_detail(app_id: str):
         steam_summary=steam_summary,
         recent_rating=recent_rating,
         rating_low_sample=rating_low_sample,
+        latest_week_label=latest_week_label,
+        weeks_for_admin=weeks_for_admin,
         is_admin=session.get("is_admin"),
     )
 
@@ -343,8 +426,15 @@ def reanalyze_game_view(app_id: str):
     game = get_game(app_id)
     if not game:
         return "Game not found", 404
-    job_id = _create_job("Starting AI analysis...")
-    thread = threading.Thread(target=_run_backfill, args=(app_id, job_id), daemon=True)
+    week_end_date = request.form.get("week_end_date", "").strip()
+    if week_end_date:
+        job_id = _create_job(f"Starting AI analysis for week of {week_end_date}...")
+        thread = threading.Thread(
+            target=_run_single_week, args=(app_id, week_end_date, job_id), daemon=True
+        )
+    else:
+        job_id = _create_job("Starting AI analysis (last 4 weeks)...")
+        thread = threading.Thread(target=_run_backfill, args=(app_id, job_id), daemon=True)
     thread.start()
     return redirect(url_for("job_status_page", job_id=job_id,
                             game_name=game["game_name"],

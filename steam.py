@@ -21,19 +21,27 @@ class SteamAPIError(Exception):
     pass
 
 
-def fetch_reviews(app_id: str, window_days: int = WINDOW_DAYS, end_cutoff_ts: int | None = None) -> list[dict]:
+def fetch_reviews(
+    app_id: str,
+    window_days: int = WINDOW_DAYS,
+    end_cutoff_ts: int | None = None,
+    start_cutoff_ts: int | None = None,
+) -> list[dict]:
     """
-    Return up to MAX_REVIEWS review dicts from a time window.
+    Return up to MAX_REVIEWS review dicts from a time window [start, end).
 
-    The window is [now - window_days, end_cutoff_ts). If end_cutoff_ts is None it
-    defaults to now, giving the standard "last N days" behaviour. Pass an explicit
-    end_cutoff_ts to fetch a historical slice (e.g. for per-week backfill).
+    If start_cutoff_ts is given it is used directly as the lower bound.
+    Otherwise the lower bound is now - window_days (legacy behaviour).
+    If end_cutoff_ts is None it defaults to now.
 
     Each dict has keys: review (str), voted_up (bool), timestamp_created (int).
     Raises SteamAPIError on bad App ID, network failure, or Steam error response.
     """
     now_ts = int(datetime.now(timezone.utc).timestamp())
-    cutoff_ts = now_ts - int(timedelta(days=window_days).total_seconds())
+    if start_cutoff_ts is not None:
+        cutoff_ts = start_cutoff_ts
+    else:
+        cutoff_ts = now_ts - int(timedelta(days=window_days).total_seconds())
     if end_cutoff_ts is None:
         end_cutoff_ts = now_ts
 

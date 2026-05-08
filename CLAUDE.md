@@ -79,7 +79,7 @@ Use-case: reviewed Monday morning to catch what happened over the weekend.
 - **Top Review Themes chart:** horizontal bars, sorted by `review_count` desc, top 8 shown. Week selector: 4 buttons for most recent weeks with data + "Older weeks…" dropdown for anything beyond that. Single-week view (not aggregated). Theme labels truncated to 26 chars; tooltip resolves full name before index lookup.
 - **AI sentiment palette** (consistent across charts): positive `rgba(74,222,128)`, mixed `rgba(251,146,60)`, negative `rgba(248,113,113)`. 0.75 alpha at rest, 1.0 on hover.
 - **0-themes warning:** shown when a run has >0 reviews but 0 themes — flags analysis failures.
-- Tailwind CDN + Chart.js v4 — no build step
+- `static/tailwind.min.css` + Chart.js v4 — no build step. Tailwind CDN replaced with a locally-generated file (scanned from templates) to fix Edge's Strict Tracking Prevention "Not Secure" warning. Regenerate: `npx tailwindcss@3 -i input.css -o static/tailwind.min.css --minify --content "templates/**/*.html"` (input.css has the three `@tailwind` directives)
 
 ### steam.py
 - `fetch_reviews(app_id, window_days=7, end_cutoff_ts=None, start_cutoff_ts=None)` — pass `start_cutoff_ts` + `end_cutoff_ts` for exact Mon-Sun windows (backfill); omit both for "last N days" (CLI agent).

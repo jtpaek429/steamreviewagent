@@ -15,7 +15,7 @@ load_dotenv(override=True)
 from steam import SteamAPIError, fetch_game_name, fetch_reviews
 from analyze import analyze_reviews
 from email_sender import send_digest, send_multi_digest
-from trends import compute_trends, init_db, load_last_run, save_run
+from trends import compute_trends, get_games, init_db, load_last_run, save_run
 
 
 def resolve_game_name(app_id: str, game_name: str) -> str:
@@ -78,12 +78,41 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--app_id", help="Steam App ID (single-game mode)")
     group.add_argument("--config", help="Path to JSON config file (multi-game mode)")
+    group.add_argument("--from-db", action="store_true",
+                       help="Multi-game mode using games tracked in the DB (respects include_in_digest flag)")
     parser.add_argument("--game_name", default="", help="Game name (single-game mode only)")
     args = parser.parse_args()
 
     init_db()
 
-    # ── Multi-game mode ────────────────────────────────────────────────────────
+    # ── DB-driven multi-game mode ──────────────────────────────────────────────
+    if args.from_db:
+        db_games = [g for g in get_games() if g["include_in_digest"]]
+        if not db_games:
+            print("No games in the DB have include_in_digest enabled.")
+            raise SystemExit(0)
+
+        print(f"[from-db] Running pipeline for {len(db_games)} game(s) in digest…\n")
+        results = []
+        for game in db_games:
+            app_id = str(game["app_id"])
+            game_name = game["game_name"]
+            results.append(run_one(app_id, game_name))
+            print()
+
+        n_ok = sum(1 for r in results if r["analysis"] is not None)
+        n_fail = len(results) - n_ok
+        print(f"Pipeline complete: {n_ok} succeeded, {n_fail} failed.\n")
+
+        print("[email] Sending consolidated digest…")
+        try:
+            send_multi_digest(results)
+        except (ValueError, RuntimeError) as e:
+            print(f"Email error: {e}")
+            raise SystemExit(1)
+        return
+
+    # ── Multi-game mode (config file) ──────────────────────────────────────────
     if args.config:
         try:
             with open(args.config) as f:

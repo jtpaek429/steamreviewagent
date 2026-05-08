@@ -28,6 +28,7 @@ from trends import (
     load_last_run,
     remove_game,
     save_run,
+    set_digest_flag,
     update_run_vote_counts,
 )
 
@@ -214,6 +215,39 @@ def _run_vote_refresh(app_id: str, job_id: str) -> None:
 
     except Exception as e:
         _update_job(job_id, "error", f"Refresh failed: {e}")
+
+
+def _run_send_email(app_id: str, to_email: str, job_id: str) -> None:
+    """Send an email digest for the most recent run. No new Claude call."""
+    from email_sender import send_digest
+
+    try:
+        game = get_game(app_id)
+        if not game:
+            _update_job(job_id, "error", "Game not found.")
+            return
+
+        _update_job(job_id, "running", "Loading most recent analysis...")
+        runs = get_all_runs(app_id)
+        if not runs:
+            _update_job(job_id, "error", "No analysis runs found — run AI analysis first.")
+            return
+
+        latest = runs[-1]
+        # Reconstruct a minimal analysis dict from the stored run
+        analysis = {
+            "review_count": latest["review_count"],
+            "overall_sentiment": latest["overall_sentiment"],
+            "themes": latest["themes"],
+            "flagged_spikes": [],
+        }
+
+        _update_job(job_id, "running", f"Sending email to {to_email}...")
+        send_digest(analysis, app_id, game["game_name"], to_email=to_email)
+        _update_job(job_id, "complete", f"Email sent to {to_email}.")
+
+    except Exception as e:
+        _update_job(job_id, "error", f"Email send failed: {e}")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -435,6 +469,34 @@ def reanalyze_game_view(app_id: str):
     else:
         job_id = _create_job("Starting AI analysis (last 4 weeks)...")
         thread = threading.Thread(target=_run_backfill, args=(app_id, job_id), daemon=True)
+    thread.start()
+    return redirect(url_for("job_status_page", job_id=job_id,
+                            game_name=game["game_name"],
+                            next=url_for("game_detail", app_id=app_id)))
+
+
+@app.route("/admin/game/<app_id>/toggle-digest", methods=["POST"])
+@admin_required
+def toggle_digest_view(app_id: str):
+    game = get_game(app_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+    new_value = not game["include_in_digest"]
+    set_digest_flag(app_id, new_value)
+    return jsonify({"include_in_digest": new_value})
+
+
+@app.route("/admin/game/<app_id>/send-email", methods=["POST"])
+@admin_required
+def send_email_view(app_id: str):
+    game = get_game(app_id)
+    if not game:
+        return "Game not found", 404
+    to_email = request.form.get("to_email", "").strip() or os.environ.get("TO_EMAIL", "")
+    if not to_email:
+        return "No recipient email address provided.", 400
+    job_id = _create_job(f"Preparing email for {game['game_name']}...")
+    thread = threading.Thread(target=_run_send_email, args=(app_id, to_email, job_id), daemon=True)
     thread.start()
     return redirect(url_for("job_status_page", job_id=job_id,
                             game_name=game["game_name"],

@@ -92,7 +92,7 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - **AI sentiment color palette** (consistent across both charts): positive `rgba(74,222,128)`, mixed `rgba(251,146,60)`, negative `rgba(248,113,113)`. Bars render at 0.75 alpha at rest, 1.0 on hover.
 - **0-themes warning:** AI Sentiment card shows a yellow warning when a run has >0 reviews but 0 themes — distinguishes analysis failures from legitimate empty results
 - **Admin panel** always visible on game detail page, even before any runs exist (so newly added games can be removed immediately)
-- Tailwind CDN + Chart.js v4 — no build step
+- `static/tailwind.min.css` + Chart.js v4 — no build step. Tailwind CDN was replaced with a locally-generated file to avoid Edge's Strict Tracking Prevention flagging the third-party script as "Not Secure". To regenerate after adding new Tailwind classes: `npx tailwindcss@3 -i /tmp/tailwind-input.css -o static/tailwind.min.css --minify --content "templates/**/*.html"` (where `tailwind-input.css` contains the three `@tailwind` directives)
 
 ### Admin actions (game detail page)
 - **Refresh Steam ratings** — fetches 37 days of Steam thumbs up/down and updates vote counts on existing runs. No Claude calls. Aborts if Steam returns 0 reviews to prevent wiping existing vote data.

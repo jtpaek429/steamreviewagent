@@ -16,7 +16,7 @@ SENTIMENT_EMOJI = {
 }
 
 
-def send_multi_digest(results: list[dict]) -> None:
+def send_multi_digest(results: list[dict], to_email: str | None = None) -> None:
     """
     Send one consolidated email covering multiple games.
 
@@ -32,7 +32,7 @@ def send_multi_digest(results: list[dict]) -> None:
     """
     api_key = os.environ.get("SENDGRID_API_KEY")
     from_email = os.environ.get("FROM_EMAIL")
-    to_email = os.environ.get("TO_EMAIL")
+    to_email = to_email or os.environ.get("TO_EMAIL")
 
     if not all([api_key, from_email, to_email]):
         raise ValueError(
@@ -60,7 +60,7 @@ def send_multi_digest(results: list[dict]) -> None:
     print(f"Email sent to {to_email} (status {status})")
 
 
-def send_digest(analysis: dict, app_id: str, game_name: str = "", trend_spikes: list[dict] | None = None) -> None:
+def send_digest(analysis: dict, app_id: str, game_name: str = "", trend_spikes: list[dict] | None = None, to_email: str | None = None) -> None:
     """
     Format analysis dict into an HTML email and send via SendGrid.
     Raises ValueError for missing env vars.
@@ -68,7 +68,7 @@ def send_digest(analysis: dict, app_id: str, game_name: str = "", trend_spikes: 
     """
     api_key = os.environ.get("SENDGRID_API_KEY")
     from_email = os.environ.get("FROM_EMAIL")
-    to_email = os.environ.get("TO_EMAIL")
+    to_email = to_email or os.environ.get("TO_EMAIL")
 
     if not all([api_key, from_email, to_email]):
         raise ValueError(

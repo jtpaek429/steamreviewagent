@@ -47,6 +47,12 @@ def init_db() -> None:
             except sqlite3.OperationalError:
                 pass  # column already exists
 
+        # Migrate existing DBs that predate the include_in_digest column
+        try:
+            conn.execute("ALTER TABLE games ADD COLUMN include_in_digest INTEGER NOT NULL DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
 
 def save_run(
     app_id: str,
@@ -58,10 +64,7 @@ def save_run(
     """Persist an analysis run. Overwrites if a run already exists for that date."""
     if run_date is None:
         run_date = date.today().isoformat()
-    themes = [
-        {"name": t["name"], "review_count": t["review_count"], "sentiment": t["sentiment"]}
-        for t in analysis.get("themes", [])
-    ]
+    themes = analysis.get("themes", [])
     with _connect() as conn:
         conn.execute(
             """
@@ -103,6 +106,15 @@ def remove_game(app_id: str) -> None:
         conn.execute("DELETE FROM games WHERE app_id = ?", (app_id,))
 
 
+def set_digest_flag(app_id: str, include: bool) -> None:
+    """Set whether this game is included in the weekly digest email."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE games SET include_in_digest = ? WHERE app_id = ?",
+            (1 if include else 0, app_id),
+        )
+
+
 def delete_runs_except(app_id: str, keep_dates: list[str]) -> int:
     """Delete all runs for app_id whose run_date is not in keep_dates. Returns rows deleted."""
     if not keep_dates:
@@ -133,20 +145,24 @@ def get_games() -> list[dict]:
     """Return all tracked games ordered by most recently added."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT app_id, game_name, added_at FROM games ORDER BY added_at DESC"
+            "SELECT app_id, game_name, added_at, include_in_digest FROM games ORDER BY added_at DESC"
         ).fetchall()
-    return [{"app_id": r[0], "game_name": r[1], "added_at": r[2]} for r in rows]
+    return [
+        {"app_id": r[0], "game_name": r[1], "added_at": r[2], "include_in_digest": bool(r[3])}
+        for r in rows
+    ]
 
 
 def get_game(app_id: str) -> dict | None:
     """Return a single tracked game, or None if not found."""
     with _connect() as conn:
         row = conn.execute(
-            "SELECT app_id, game_name, added_at FROM games WHERE app_id = ?", (app_id,)
+            "SELECT app_id, game_name, added_at, include_in_digest FROM games WHERE app_id = ?",
+            (app_id,),
         ).fetchone()
     if row is None:
         return None
-    return {"app_id": row[0], "game_name": row[1], "added_at": row[2]}
+    return {"app_id": row[0], "game_name": row[1], "added_at": row[2], "include_in_digest": bool(row[3])}
 
 
 def get_all_runs(app_id: str) -> list[dict]:

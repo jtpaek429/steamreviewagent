@@ -28,19 +28,23 @@
       </h2>
       {% if game.latest_run %}
         {% set s = game.latest_run.overall_sentiment %}
-        <span class="shrink-0 text-xs px-2 py-0.5 rounded-full
-          {% if s == 'positive' %}bg-green-900 text-green-300
-          {% elif s == 'negative' %}bg-red-900 text-red-300
-          {% else %}bg-yellow-900 text-yellow-300{% endif %}">
-          {{ s }}
-        </span>
+        <div class="flex flex-col items-end gap-0.5 shrink-0">
+          <span class="text-xs px-2 py-0.5 rounded-full
+            {% if s == 'positive' %}bg-green-900 text-green-300
+            {% elif s == 'negative' %}bg-red-900 text-red-300
+            {% else %}bg-yellow-900 text-yellow-300{% endif %}">
+            {{ s }}
+          </span>
+          <span class="text-[10px] text-gray-500">7-day AI sentiment</span>
+        </div>
       {% endif %}
     </div>
 
     {% if game.latest_run %}
       <p class="text-sm text-gray-400 mb-3">
-        {{ game.latest_run.review_count }} reviews &middot; {{ game.latest_run.run_date }}
+        {{ game.latest_run.review_count }} reviews in last 7 days &middot; {{ game.latest_run.run_date }}
       </p>
+      <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Top Identified Themes</p>
       <div class="flex flex-wrap gap-1">
         {% for theme in game.latest_run.themes[:3] %}
           <span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded">{{ theme.name }}</span>

@@ -22,6 +22,22 @@
   <p class="text-lg">No analysis runs yet.</p>
 </div>
 
+<!-- Admin actions (shown even with no runs so game can be removed) -->
+{% if is_admin %}
+<div class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-4">Admin</h2>
+  <div class="flex flex-wrap gap-3">
+    <form method="post" action="/admin/game/{{ game.app_id }}/remove"
+          onsubmit="return confirm('Remove {{ game.game_name }} from the dashboard? Run data is preserved.')">
+      <button type="submit"
+              class="text-sm bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-300 px-3 py-1.5 rounded-md transition-colors">
+        Remove game
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {% else %}
 
 <!-- Summary cards -->
@@ -74,7 +90,11 @@
       {% else %}text-yellow-400{% endif %}">
       {{ s | capitalize }}
     </p>
-    <p class="text-xs text-gray-500 mt-1">{{ latest.themes|length }} themes identified</p>
+    {% if latest.themes|length == 0 and latest.review_count > 0 %}
+      <p class="text-xs text-yellow-500 mt-1">⚠ Analysis returned 0 themes for {{ latest.review_count }} reviews — may have failed</p>
+    {% else %}
+      <p class="text-xs text-gray-500 mt-1">{{ latest.themes|length }} themes identified</p>
+    {% endif %}
   </div>
 
   <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">

@@ -102,7 +102,7 @@ def analyze_reviews(reviews: list[dict]) -> dict:
 
     response = client.messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=4096,
         tools=[ANALYSIS_TOOL],
         tool_choice={"type": "tool", "name": "submit_analysis"},  # force tool call
         system=(
@@ -130,6 +130,11 @@ def analyze_reviews(reviews: list[dict]) -> dict:
     # Extract the tool call result — guaranteed present because tool_choice forces it
     for block in response.content:
         if block.type == "tool_use" and block.name == "submit_analysis":
+            if response.stop_reason == "max_tokens":
+                raise RuntimeError(
+                    "Claude's response was truncated (max_tokens reached). "
+                    "The analysis could not be completed — increase max_tokens."
+                )
             return block.input
 
     # Should never reach here given tool_choice="tool", but be explicit

@@ -70,41 +70,49 @@ def admin_required(f):
 # ── Background jobs ────────────────────────────────────────────────────────────
 
 def _run_backfill(app_id: str, job_id: str) -> None:
-    """Fetches 30 days of reviews, runs Claude analysis week by week, stores results."""
-    try:
-        _update_job(job_id, "running", "Fetching reviews from Steam (30 days)...")
-        reviews = fetch_reviews(app_id, window_days=30)
+    """Fetches 30 days of reviews week by week, runs Claude analysis per week."""
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    week_secs = 7 * 24 * 3600
+    completed_weeks = 0
 
-        if not reviews:
-            _update_job(job_id, "complete", "No reviews found in the last 30 days.")
+    for week_num in range(4):
+        end_ts = now_ts - week_num * week_secs
+        start_ts = end_ts - week_secs
+
+        try:
+            _update_job(job_id, "running",
+                        f"Fetching week {week_num + 1} of 4 from Steam...")
+            # Fetch only the reviews that fall in this specific week window.
+            # window_days covers from now back to start_ts; end_cutoff_ts caps
+            # the upper bound so we don't collect more recent reviews.
+            reviews = fetch_reviews(
+                app_id,
+                window_days=(week_num + 1) * 7,
+                end_cutoff_ts=end_ts,
+            )
+        except SteamAPIError as e:
+            _update_job(job_id, "error", f"Steam fetch failed on week {week_num + 1}: {e}")
             return
 
-        now_ts = int(datetime.now(timezone.utc).timestamp())
-        week_secs = 7 * 24 * 3600
-        completed_weeks = 0
+        if not reviews:
+            continue
 
-        for week_num in range(4):
-            end_ts = now_ts - week_num * week_secs
-            start_ts = end_ts - week_secs
-            bucket = [r for r in reviews if start_ts <= r["timestamp_created"] < end_ts]
-
-            if not bucket:
-                continue
-
+        try:
             _update_job(job_id, "running",
-                        f"Analyzing week {week_num + 1} of 4 ({len(bucket)} reviews)...")
-            analysis = analyze_reviews(bucket)
-            positive_count = sum(1 for r in bucket if r["voted_up"])
-            negative_count = len(bucket) - positive_count
-            run_date = datetime.fromtimestamp(end_ts, tz=timezone.utc).date().isoformat()
-            save_run(app_id, analysis, run_date=run_date,
-                     positive_count=positive_count, negative_count=negative_count)
-            completed_weeks += 1
+                        f"Analyzing week {week_num + 1} of 4 ({len(reviews)} reviews)...")
+            analysis = analyze_reviews(reviews)
+        except Exception as e:
+            _update_job(job_id, "error", f"Analysis failed on week {week_num + 1}: {e}")
+            return
 
-        _update_job(job_id, "complete", f"Done — {completed_weeks} week(s) analyzed.")
+        positive_count = sum(1 for r in reviews if r["voted_up"])
+        negative_count = len(reviews) - positive_count
+        run_date = datetime.fromtimestamp(end_ts, tz=timezone.utc).date().isoformat()
+        save_run(app_id, analysis, run_date=run_date,
+                 positive_count=positive_count, negative_count=negative_count)
+        completed_weeks += 1
 
-    except Exception as e:
-        _update_job(job_id, "error", f"Backfill failed: {e}")
+    _update_job(job_id, "complete", f"Done — {completed_weeks} week(s) analyzed.")
 
 
 def _run_vote_refresh(app_id: str, job_id: str) -> None:
@@ -116,6 +124,11 @@ def _run_vote_refresh(app_id: str, job_id: str) -> None:
         _update_job(job_id, "running", "Fetching reviews from Steam...")
         # Fetch a bit wider than 30 days to cover all weekly windows
         reviews = fetch_reviews(app_id, window_days=37)
+
+        if not reviews:
+            _update_job(job_id, "error",
+                        "Steam returned 0 reviews — aborting to avoid wiping existing vote data.")
+            return
 
         existing_runs = get_all_runs(app_id)
         if not existing_runs:

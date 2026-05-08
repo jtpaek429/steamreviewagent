@@ -43,6 +43,14 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 init_db()
 
 
+@app.context_processor
+def inject_globals():
+    is_admin = session.get("is_admin", False)
+    return {
+        "digest_enabled": get_setting("digest_schedule_enabled", "1") == "1" if is_admin else False,
+    }
+
+
 # ── In-memory job store ────────────────────────────────────────────────────────
 
 _jobs: dict[str, dict] = {}

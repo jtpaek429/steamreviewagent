@@ -20,6 +20,7 @@ from analyze import analyze_reviews
 from steam import SteamAPIError, fetch_game_name, fetch_review_summary, fetch_reviews
 from trends import (
     add_game,
+    compute_trends,
     delete_runs_except,
     get_all_runs,
     get_game,
@@ -250,6 +251,53 @@ def _run_send_email(app_id: str, to_email: str, job_id: str) -> None:
 
     except Exception as e:
         _update_job(job_id, "error", f"Email send failed: {e}")
+
+
+def _run_digest(job_id: str) -> None:
+    """Run the full pipeline for all digest-enabled games and send consolidated email."""
+    from email_sender import send_multi_digest
+
+    try:
+        db_games = [g for g in get_games() if g["include_in_digest"]]
+        if not db_games:
+            _update_job(job_id, "error", "No games have digest enabled.")
+            return
+
+        results = []
+        for i, game in enumerate(db_games, 1):
+            app_id = str(game["app_id"])
+            game_name = game["game_name"]
+            _update_job(job_id, "running", f"Processing {game_name} ({i}/{len(db_games)})...")
+
+            try:
+                reviews = fetch_reviews(app_id)
+            except SteamAPIError as e:
+                results.append({"app_id": app_id, "game_name": game_name,
+                                 "analysis": None, "trend_spikes": [], "error": str(e)})
+                continue
+
+            try:
+                analysis = analyze_reviews(reviews)
+            except (ValueError, RuntimeError) as e:
+                results.append({"app_id": app_id, "game_name": game_name,
+                                 "analysis": None, "trend_spikes": [], "error": str(e)})
+                continue
+
+            positive_count = sum(1 for r in reviews if r["voted_up"])
+            negative_count = len(reviews) - positive_count
+            previous_run = load_last_run(app_id)
+            trend_spikes = compute_trends(analysis, previous_run) if previous_run else []
+            save_run(app_id, analysis, positive_count=positive_count, negative_count=negative_count)
+            results.append({"app_id": app_id, "game_name": game_name,
+                            "analysis": analysis, "trend_spikes": trend_spikes, "error": None})
+
+        n_ok = sum(1 for r in results if r["analysis"] is not None)
+        _update_job(job_id, "running", f"Sending digest email ({n_ok}/{len(db_games)} succeeded)...")
+        send_multi_digest(results)
+        _update_job(job_id, "complete", f"Digest sent — {n_ok}/{len(db_games)} game(s) included.")
+
+    except Exception as e:
+        _update_job(job_id, "error", f"Digest failed: {e}")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -514,6 +562,17 @@ def send_email_view(app_id: str):
     return redirect(url_for("job_status_page", job_id=job_id,
                             game_name=game["game_name"],
                             next=url_for("game_detail", app_id=app_id)))
+
+
+@app.route("/admin/send-digest", methods=["POST"])
+@admin_required
+def send_digest_view():
+    job_id = _create_job("Starting weekly digest...")
+    thread = threading.Thread(target=_run_digest, args=(job_id,), daemon=True)
+    thread.start()
+    return redirect(url_for("job_status_page", job_id=job_id,
+                            game_name="Weekly Digest",
+                            next=url_for("index")))
 
 
 @app.route("/admin/status/<job_id>")

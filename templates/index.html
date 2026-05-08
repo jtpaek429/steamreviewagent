@@ -3,6 +3,14 @@
 {% block content %}
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-bold">Tracked Games</h1>
+  {% if is_admin %}
+  <form method="POST" action="/admin/send-digest">
+    <button type="submit"
+            class="text-sm px-3 py-1.5 rounded bg-indigo-700 hover:bg-indigo-600 text-white transition-colors">
+      Send Weekly Digest
+    </button>
+  </form>
+  {% endif %}
 </div>
 
 {% if not games %}

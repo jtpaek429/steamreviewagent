@@ -99,7 +99,9 @@
 
   <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
     <p class="text-xs font-bold text-gray-500 mb-1">Last Analysis Run</p>
-    <p class="text-base font-semibold text-white">{{ latest.run_date }}</p>
+    <p class="text-sm font-semibold text-white">
+      {% if latest_week_label %}Week of {{ latest_week_label }}{% else %}{{ latest.run_date }}{% endif %}
+    </p>
     <p class="text-xs text-gray-500 mt-1">{{ latest.review_count }} reviews analyzed</p>
   </div>
 
@@ -109,10 +111,22 @@
 <!-- Charts -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
-  <!-- Review distribution chart -->
+  <!-- Sentiment trend chart -->
   <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
     <h2 class="font-semibold mb-1">Sentiment Trend</h2>
-    <p class="text-xs text-gray-500 mb-4">How review sentiment has shifted week over week</p>
+    <p class="text-xs text-gray-500 mb-3">How review sentiment has shifted week over week</p>
+
+    <!-- Timeframe toggle -->
+    <div class="flex items-center gap-2 mb-4">
+      <span class="text-xs text-gray-500">Show:</span>
+      <div class="flex gap-1">
+        <button onclick="setSentimentTimeframe(30)"  data-days="30"  class="timeframe-btn text-xs px-2.5 py-1 rounded-full border transition-colors bg-blue-600 border-blue-600 text-white">30d</button>
+        <button onclick="setSentimentTimeframe(60)"  data-days="60"  class="timeframe-btn text-xs px-2.5 py-1 rounded-full border transition-colors bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200">60d</button>
+        <button onclick="setSentimentTimeframe(90)"  data-days="90"  class="timeframe-btn text-xs px-2.5 py-1 rounded-full border transition-colors bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200">90d</button>
+        <button onclick="setSentimentTimeframe(180)" data-days="180" class="timeframe-btn text-xs px-2.5 py-1 rounded-full border transition-colors bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200">180d</button>
+      </div>
+    </div>
+
     {% if runs|length == 1 %}
       <p class="text-xs text-yellow-600 mb-3">Only one run — trend will appear after more weekly runs.</p>
     {% endif %}
@@ -130,26 +144,13 @@
     </div>
   </div>
 
-  <!-- Themes chart with week toggle -->
+  <!-- Themes chart -->
   <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
     <h2 class="font-semibold mb-1">Top Review Themes</h2>
     <p class="text-xs text-gray-500 mb-4">Most-discussed topics, colored by sentiment</p>
-    {% if runs|length > 1 %}
-    <div id="week-toggles" class="flex flex-wrap gap-1.5 mb-4">
-      {% for run in runs | reverse %}
-      <button
-        onclick="showWeek('{{ run.run_date }}')"
-        id="btn-{{ run.run_date }}"
-        class="week-btn text-xs px-2.5 py-1 rounded-full border transition-colors
-               {% if run.run_date == latest_with_themes.run_date %}bg-blue-600 border-blue-600 text-white
-               {% else %}bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200{% endif %}">
-        {{ run.run_date }}
-      </button>
-      {% endfor %}
-    </div>
-    {% else %}
-    <p class="text-xs text-gray-500 mb-4">Latest run</p>
-    {% endif %}
+
+    <!-- Week selector: 4 buttons + older dropdown — populated by JS -->
+    <div id="week-toggles" class="flex flex-wrap gap-1.5 mb-4 items-center"></div>
 
     {% if latest_with_themes %}
       <canvas id="themesChart"></canvas>
@@ -164,20 +165,43 @@
 {% if is_admin %}
 <div class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-4">Admin</h2>
-  <div class="flex flex-wrap gap-3">
+  <div class="flex flex-wrap gap-3 items-start">
+
     <form method="post" action="/admin/game/{{ game.app_id }}/refresh-votes">
       <button type="submit"
               class="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-md transition-colors">
         Refresh Steam ratings
       </button>
     </form>
+
+    <!-- Re-run last 4 weeks -->
     <form method="post" action="/admin/game/{{ game.app_id }}/reanalyze"
-          onsubmit="return confirm('Re-run AI analysis for {{ game.game_name }}? This will overwrite the last 30 days of runs and use Claude API tokens.')">
+          onsubmit="return confirm('Re-run AI analysis for the last 4 Mon–Sun weeks? This will overwrite existing runs and use Claude API tokens.')">
       <button type="submit"
               class="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-md transition-colors">
-        Re-run AI analysis
+        Re-run AI analysis (last 4 weeks)
       </button>
     </form>
+
+    <!-- Re-run a specific week -->
+    <form method="post" action="/admin/game/{{ game.app_id }}/reanalyze"
+          onsubmit="return confirm('Re-run AI analysis for the selected week? This will use Claude API tokens.')">
+      <div class="flex gap-2 items-center">
+        <select name="week_end_date"
+                class="text-sm bg-gray-800 border border-gray-700 text-gray-300 px-2 py-1.5 rounded-md">
+          {% for w in weeks_for_admin %}
+          <option value="{{ w.sunday_date }}">
+            {{ w.label }}{{ ' ✓' if w.has_run else '' }}
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit"
+                class="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-md transition-colors">
+          Re-run week
+        </button>
+      </div>
+    </form>
+
     <form method="post" action="/admin/game/{{ game.app_id }}/remove"
           onsubmit="return confirm('Remove {{ game.game_name }} from the dashboard? Run data is preserved.')">
       <button type="submit"
@@ -185,6 +209,7 @@
         Remove game
       </button>
     </form>
+
   </div>
 </div>
 {% endif %}
@@ -234,6 +259,9 @@ const allWeeksThemes = {
 
 const gridColor = '#1f2937';
 const tickColor = '#6b7280';
+const tickColorEmpty = 'rgba(107,114,128,0.35)';
+const btnActive   = 'bg-blue-600 border-blue-600 text-white';
+const btnInactive = 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200';
 
 const sentimentColor = (s, alpha) => {
   if (s === 'positive') return `rgba(74,222,128,${alpha})`;
@@ -241,40 +269,116 @@ const sentimentColor = (s, alpha) => {
   return `rgba(251,146,60,${alpha})`;
 };
 
-// AI sentiment stacked bars + Steam approval % line
-new Chart(document.getElementById('activityChart'), {
+// ── Sentiment trend chart ──────────────────────────────────────────────────────
+
+// Labels that have real data (used by tick color callback and plugin).
+let sentimentDataSet = new Set(chartData.labels);
+
+// Return ISO Sunday dates for every complete Mon–Sun UTC week within `days` days.
+function getWeekSundaysInRange(days) {
+  const now = new Date();
+  const daysSinceMonday = (now.getUTCDay() + 6) % 7;   // 0=Mon … 6=Sun
+  const lastMonday = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysSinceMonday
+  ));
+  const lastSunday = new Date(lastMonday);
+  lastSunday.setUTCDate(lastSunday.getUTCDate() - 1);
+
+  const cutoff = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days
+  ));
+
+  const sundays = [];
+  let cur = new Date(lastSunday);
+  while (cur >= cutoff) {
+    sundays.unshift(cur.toISOString().slice(0, 10));
+    cur = new Date(cur);
+    cur.setUTCDate(cur.getUTCDate() - 7);
+  }
+  return sundays;
+}
+
+// Plugin: gray overlay + "No analyzed data" pill over empty week slots.
+const noDataPlugin = {
+  id: 'noDataBg',
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea, data } = chart;
+    if (!chartArea || !data.labels.length) return;
+
+    const n = data.labels.length;
+    const barW = (chartArea.right - chartArea.left) / n;
+    const isEmpty = (i) => data.datasets.every(
+      ds => ds.data[i] === null || ds.data[i] === undefined
+    );
+
+    let regionStart = null;
+    const flush = (endIdx) => {
+      if (regionStart === null) return;
+      const x1 = chartArea.left + regionStart * barW;
+      const x2 = chartArea.left + endIdx * barW;
+      const w  = x2 - x1;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(55,65,81,0.28)';
+      ctx.fillRect(x1, chartArea.top, w, chartArea.height);
+
+      if (w > 110) {
+        const cx   = x1 + w / 2;
+        const cy   = chartArea.top + chartArea.height / 2;
+        const text = 'No analyzed data for this period';
+        ctx.font   = '11px system-ui,-apple-system,sans-serif';
+        const tw   = ctx.measureText(text).width + 20;
+        const th   = 24;
+
+        ctx.fillStyle = 'rgba(17,24,39,0.88)';
+        ctx.beginPath();
+        ctx.roundRect(cx - tw / 2, cy - th / 2, tw, th, 4);
+        ctx.fill();
+
+        ctx.fillStyle    = '#9ca3af';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, cx, cy);
+      }
+      ctx.restore();
+      regionStart = null;
+    };
+
+    for (let i = 0; i <= n; i++) {
+      if (i < n && isEmpty(i)) {
+        if (regionStart === null) regionStart = i;
+      } else {
+        flush(i);
+      }
+    }
+  }
+};
+
+const activityChart = new Chart(document.getElementById('activityChart'), {
+  plugins: [noDataPlugin],
   data: {
-    labels: chartData.labels,
+    labels: [],
     datasets: [
       {
-        type: 'bar',
-        label: 'Positive',
-        data: chartData.ai_positive,
+        type: 'bar', label: 'Positive',
+        data: [],
         backgroundColor: sentimentColor('positive', 0.75),
         hoverBackgroundColor: sentimentColor('positive', 1),
-        borderWidth: 0,
-        stack: 'ai',
-        yAxisID: 'y',
+        borderWidth: 0, stack: 'ai', yAxisID: 'y',
       },
       {
-        type: 'bar',
-        label: 'Mixed',
-        data: chartData.ai_mixed,
+        type: 'bar', label: 'Mixed',
+        data: [],
         backgroundColor: sentimentColor('mixed', 0.75),
         hoverBackgroundColor: sentimentColor('mixed', 1),
-        borderWidth: 0,
-        stack: 'ai',
-        yAxisID: 'y',
+        borderWidth: 0, stack: 'ai', yAxisID: 'y',
       },
       {
-        type: 'bar',
-        label: 'Negative',
-        data: chartData.ai_negative,
+        type: 'bar', label: 'Negative',
+        data: [],
         backgroundColor: sentimentColor('negative', 0.75),
         hoverBackgroundColor: sentimentColor('negative', 1),
-        borderWidth: 0,
-        stack: 'ai',
-        yAxisID: 'y',
+        borderWidth: 0, stack: 'ai', yAxisID: 'y',
       },
     ]
   },
@@ -285,8 +389,11 @@ new Chart(document.getElementById('activityChart'), {
       tooltip: {
         callbacks: {
           label: (item) => {
+            if (item.raw === null || item.raw === undefined) return null;
             const i = item.dataIndex;
-            const total = chartData.ai_positive[i] + chartData.ai_mixed[i] + chartData.ai_negative[i];
+            const total = activityChart.data.datasets.reduce(
+              (sum, ds) => sum + (ds.data[i] || 0), 0
+            );
             const pct = total ? Math.round(item.raw / total * 100) : 0;
             return `${item.dataset.label}: ${item.raw} (${pct}%)`;
           }
@@ -294,14 +401,69 @@ new Chart(document.getElementById('activityChart'), {
       }
     },
     scales: {
-      x: { stacked: true, ticks: { color: tickColor }, grid: { color: gridColor } },
-      y: { stacked: true, beginAtZero: true, grace: '10%', ticks: { color: tickColor, stepSize: 1, precision: 0 }, grid: { color: gridColor } },
+      x: {
+        stacked: true,
+        ticks: {
+          color: (ctx) => sentimentDataSet.has(activityChart.data.labels[ctx.index])
+            ? tickColor : tickColorEmpty,
+        },
+        grid: { color: gridColor },
+      },
+      y: {
+        stacked: true, beginAtZero: true, grace: '10%',
+        ticks: { color: tickColor, stepSize: 1, precision: 0 },
+        grid: { color: gridColor },
+      },
     },
   }
 });
 
+function setSentimentTimeframe(days) {
+  document.querySelectorAll('.timeframe-btn').forEach(btn => {
+    const active = parseInt(btn.dataset.days) === days;
+    btn.className = `timeframe-btn text-xs px-2.5 py-1 rounded-full border transition-colors ${active ? btnActive : btnInactive}`;
+  });
+
+  const now = new Date();
+  const cutoff = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days
+  ));
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+  // Canonical Mon-Sun week Sundays for the full range
+  const canonicalSundays = getWeekSundaysInRange(days);
+
+  // Existing data labels that fall in range (handles pre-migration non-Sunday dates)
+  const existingInRange = chartData.labels.filter(l => l >= cutoffStr);
+
+  // Merge, deduplicate, sort oldest→newest
+  const allLabels = [...new Set([...canonicalSundays, ...existingInRange])].sort();
+
+  // Update the set used by tick color callback
+  sentimentDataSet = new Set(existingInRange);
+
+  const dataMap = {};
+  chartData.labels.forEach((lbl, i) => {
+    dataMap[lbl] = {
+      pos: chartData.ai_positive[i],
+      mix: chartData.ai_mixed[i],
+      neg: chartData.ai_negative[i],
+    };
+  });
+
+  activityChart.data.labels           = allLabels;
+  activityChart.data.datasets[0].data = allLabels.map(l => dataMap[l]?.pos ?? null);
+  activityChart.data.datasets[1].data = allLabels.map(l => dataMap[l]?.mix ?? null);
+  activityChart.data.datasets[2].data = allLabels.map(l => dataMap[l]?.neg ?? null);
+  activityChart.update();
+}
+
+// Initialise with 30-day view
+setSentimentTimeframe(30);
+
+// ── Themes chart ───────────────────────────────────────────────────────────────
+
 {% if latest_with_themes %}
-// Themes chart
 const themesChart = new Chart(document.getElementById('themesChart'), {
   type: 'bar',
   data: buildThemesData({{ latest_with_themes.run_date | tojson }}),
@@ -314,7 +476,8 @@ const themesChart = new Chart(document.getElementById('themesChart'), {
         callbacks: {
           title: (items) => {
             const i = items[0].dataIndex;
-            const themes = (allWeeksThemes[activeDate] || []).slice().sort((a, b) => b.review_count - a.review_count).slice(0, 8);
+            const themes = (allWeeksThemes[activeDate] || [])
+              .slice().sort((a, b) => b.review_count - a.review_count).slice(0, 8);
             return themes[i]?.name ?? items[0].label;
           }
         }
@@ -332,7 +495,8 @@ function truncateLabel(str, maxLen = 26) {
 }
 
 function buildThemesData(runDate) {
-  const themes = (allWeeksThemes[runDate] || []).slice().sort((a, b) => b.review_count - a.review_count).slice(0, 8);
+  const themes = (allWeeksThemes[runDate] || [])
+    .slice().sort((a, b) => b.review_count - a.review_count).slice(0, 8);
   return {
     labels: themes.map(t => truncateLabel(t.name)),
     datasets: [{
@@ -348,25 +512,70 @@ let activeDate = {{ latest_with_themes.run_date | tojson }};
 
 function showWeek(runDate) {
   activeDate = runDate;
-
-  // Update chart
   const newData = buildThemesData(runDate);
-  themesChart.data.labels = newData.labels;
+  themesChart.data.labels   = newData.labels;
   themesChart.data.datasets = newData.datasets;
   themesChart.update();
 
-  // Update toggle button styles
   document.querySelectorAll('.week-btn').forEach(btn => {
-    const isActive = btn.id === `btn-${runDate}`;
-    btn.className = btn.className
-      .replace(/bg-blue-600 border-blue-600 text-white/, '')
-      .replace(/bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200/, '')
-      .trim();
-    btn.className += isActive
-      ? ' bg-blue-600 border-blue-600 text-white'
-      : ' bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200';
+    const active = btn.dataset.date === runDate;
+    btn.className = `week-btn text-xs px-2.5 py-1 rounded-full border transition-colors ${active ? btnActive : btnInactive}`;
   });
+
+  // Reset the older-weeks dropdown to placeholder
+  const sel = document.getElementById('older-weeks-select');
+  if (sel) sel.value = '';
 }
+
+// Build week-toggle UI from allWeeksThemes
+(function buildWeekToggles() {
+  const weeksWithThemes = Object.keys(allWeeksThemes)
+    .filter(d => allWeeksThemes[d] && allWeeksThemes[d].length > 0)
+    .sort((a, b) => b.localeCompare(a));   // newest first
+
+  const recentWeeks = weeksWithThemes.slice(0, 4);
+  const olderWeeks  = weeksWithThemes.slice(4);
+  const container   = document.getElementById('week-toggles');
+
+  recentWeeks.forEach((date, idx) => {
+    const btn = document.createElement('button');
+    btn.dataset.date = date;
+    btn.className = `week-btn text-xs px-2.5 py-1 rounded-full border transition-colors ${idx === 0 ? btnActive : btnInactive}`;
+    btn.textContent = date;
+    btn.onclick = () => showWeek(date);
+    container.appendChild(btn);
+  });
+
+  if (olderWeeks.length > 0) {
+    const sel = document.createElement('select');
+    sel.id = 'older-weeks-select';
+    sel.className = `text-xs bg-transparent border rounded-full px-2.5 py-1 cursor-pointer transition-colors ${btnInactive}`;
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Older weeks…';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    sel.appendChild(placeholder);
+
+    olderWeeks.forEach(date => {
+      const opt = document.createElement('option');
+      opt.value = date;
+      opt.textContent = date;
+      sel.appendChild(opt);
+    });
+
+    sel.onchange = (e) => {
+      if (e.target.value) {
+        showWeek(e.target.value);
+        // update select styling to match active state visually
+        sel.className = `text-xs bg-blue-600 border border-blue-600 text-white rounded-full px-2.5 py-1 cursor-pointer transition-colors`;
+      }
+    };
+
+    container.appendChild(sel);
+  }
+})();
 {% endif %}
 </script>
 

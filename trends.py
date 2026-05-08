@@ -103,6 +103,19 @@ def remove_game(app_id: str) -> None:
         conn.execute("DELETE FROM games WHERE app_id = ?", (app_id,))
 
 
+def delete_runs_except(app_id: str, keep_dates: list[str]) -> int:
+    """Delete all runs for app_id whose run_date is not in keep_dates. Returns rows deleted."""
+    if not keep_dates:
+        return 0
+    placeholders = ",".join("?" * len(keep_dates))
+    with _connect() as conn:
+        cursor = conn.execute(
+            f"DELETE FROM runs WHERE app_id = ? AND run_date NOT IN ({placeholders})",
+            [app_id, *keep_dates],
+        )
+        return cursor.rowcount
+
+
 def update_run_vote_counts(app_id: str, run_date: str, positive_count: int, negative_count: int) -> int:
     """Update vote counts on an existing run. Returns number of rows updated."""
     with _connect() as conn:

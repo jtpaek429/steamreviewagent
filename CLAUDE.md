@@ -76,9 +76,9 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 
 ### app.py (Flask dashboard)
 - Public routes: `/` (game cards), `/game/<app_id>` (detail with charts)
-- Admin routes (session-gated): `/admin/add`, `/admin/game/<id>/remove`, `/admin/game/<id>/refresh-votes`
+- Admin routes (session-gated): `/admin/add`, `/admin/game/<id>/remove`, `/admin/game/<id>/refresh-votes`, `/admin/game/<id>/reanalyze`
 - Auth: single `ADMIN_PASSWORD` env var, Flask session cookie — no user system
-- Long-running jobs (backfill, vote refresh) run in daemon threads; frontend polls `/api/status/<job_id>` every 2s until complete
+- Long-running jobs (backfill, vote refresh, reanalyze) run in daemon threads; frontend polls `/api/status/<job_id>` every 2s until complete
 - Job state is in-memory (`_jobs` dict + lock) — resets on server restart, which is fine
 - Smart re-add: if a removed game is re-added and runs already exist in the DB, runs the cheap vote refresh instead of the full Claude backfill
 - `init_db()` is called at module level so it runs on every startup
@@ -90,14 +90,21 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - **Sentiment Trend chart:** stacked bars of AI theme sentiment (positive/mixed/negative) per week. Raw theme sentiment counts — no scaling to vote totals. Whole-number y-axis ticks, 10% grace padding. Steam vote bars removed.
 - **Top Review Themes chart:** horizontal bar chart with week-toggle buttons, sorted by `review_count` descending. Theme labels truncated to 26 chars; tooltip sorts before index lookup so full name always matches the hovered bar. Whole-number x-axis ticks, 10% grace padding.
 - **AI sentiment color palette** (consistent across both charts): positive `rgba(74,222,128)`, mixed `rgba(251,146,60)`, negative `rgba(248,113,113)`. Bars render at 0.75 alpha at rest, 1.0 on hover.
+- **0-themes warning:** AI Sentiment card shows a yellow warning when a run has >0 reviews but 0 themes — distinguishes analysis failures from legitimate empty results
+- **Admin panel** always visible on game detail page, even before any runs exist (so newly added games can be removed immediately)
 - Tailwind CDN + Chart.js v4 — no build step
 
+### Admin actions (game detail page)
+- **Refresh Steam ratings** — fetches 37 days of Steam thumbs up/down and updates vote counts on existing runs. No Claude calls. Aborts if Steam returns 0 reviews to prevent wiping existing vote data.
+- **Re-run AI analysis** — triggers a full 30-day per-week backfill via `_run_backfill`, overwriting existing runs with fresh Claude analysis. Use to fix bad data (0 themes, wrong sentiment) without removing and re-adding the game.
+- **Remove game** — removes from the `games` table only; run history in `runs` is preserved so re-adding skips the Claude backfill.
+
 ### steam.py
-- `fetch_reviews(app_id, window_days=7)` — `window_days` is now a parameter (default 7) to support 30-day backfill fetches
+- `fetch_reviews(app_id, window_days=7, end_cutoff_ts=None)` — fetches reviews from `[now - window_days, end_cutoff_ts)`. When `end_cutoff_ts` is None it defaults to now, giving standard "last N days" behaviour. Pass an explicit `end_cutoff_ts` to fetch a historical slice (used by per-week backfill).
 - `fetch_review_summary(app_id)` — single lightweight request returning `{review_score_desc, total_positive, total_negative, total_reviews}` for the all-time rating card
 - `fetch_game_name(app_id)` — resolves display name from Steam store API
 - Cursor-based pagination with `filter=recent` (newest-first); stops as soon as a review timestamp falls outside the window
-- Caps at 500 reviews via `random.sample()` if the window exceeds that
+- Caps at 500 reviews via `random.sample()` if the window exceeds that; early-exit at 1000 collected to avoid excessive API calls
 - Deduplicates cursors to guard against Steam's occasional repeated-cursor bug
 - Raises `SteamAPIError` for bad App IDs, network failures, timeouts
 
@@ -105,7 +112,8 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - Uses Claude tool use with `tool_choice={"type": "tool", "name": "submit_analysis"}` to force structured output — no JSON parsing needed, output is a Python dict directly from `block.input`
 - Schema: `review_count`, `overall_sentiment`, `themes[]` (name, description, review_count, sentiment, representative_quotes, confidence 0–1), `flagged_spikes[]`
 - Individual reviews are truncated to 300 chars before sending to Claude
-- Model: `claude-sonnet-4-6`
+- Model: `claude-sonnet-4-6`, `max_tokens=4096`
+- Raises `RuntimeError` if `stop_reason == "max_tokens"` — truncated responses fail loudly rather than silently saving partial data (e.g. 0 themes with a valid sentiment)
 - **Sub-theme splitting:** when a topic has clearly opposing camps, Claude splits it into two themes using " — Praised" / " — Criticized" suffixes (e.g. "Difficulty & Challenge — Praised" and "Difficulty & Challenge — Criticized") rather than collapsing into a single mixed theme
 
 ### email_sender.py
@@ -135,12 +143,15 @@ All `load_dotenv()` calls use `override=True` so `.env` always wins over shell e
 - `run_weekly.sh` — wrapper invoked by cron; `cd`s to the project dir, runs `agent.py --config games.json`, appends stdout/stderr to `data/run_weekly.log`
 - `schedule.sh` — manages the cron entry with `--enable` (Mondays 8 AM), `--disable`, `--status`; uses a `# steam-review-agent` marker to find/remove its own cron line without touching other jobs
 
-## Pending deployment decisions
+## Deployment
 
-- **SQLite persistence on Railway** — Railway's filesystem is ephemeral; a Railway Volume (persistent disk) is needed before deploying so `history.db` survives redeploys
-- **Cron on Railway vs local** — whether to migrate `run_weekly.sh` to Railway's built-in scheduler (so runs happen even when laptop is off)
+- Deployed on Railway at `reviews.jonathanpaek.com`
+- `DB_PATH` is set via Railway's environment variables panel to point at a persistent Volume — do NOT put `DB_PATH` in `.env` (it would override the Railway path locally and break local runs)
+- Local runs default to `data/history.db` (the `trends.py` fallback when `DB_PATH` is unset)
+- weekly-digest cron service added on Railway (currently inactive, runs python agent.py --config games.json)
+
+## Pending decisions
 - **60/90 day backfill** — the UI currently only offers a 30-day window; easy to add options, deferred to control Claude API costs
-- **Deployment target** — Railway, with DNS pointed at `reviews.jonathanpaek.com`
 
 ## Git workflow
 

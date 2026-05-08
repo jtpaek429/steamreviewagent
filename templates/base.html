@@ -15,17 +15,65 @@
     </a>
     <div class="flex items-center gap-4">
       {% if is_admin %}
+        <!-- Weekly digest schedule toggle -->
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-400">Weekly digest</span>
+          <button id="schedule-toggle"
+                  data-enabled="{{ 'true' if digest_enabled else 'false' }}"
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none
+                         {{ 'bg-indigo-600' if digest_enabled else 'bg-gray-600' }}"
+                  title="{{ 'Digest scheduled — click to pause' if digest_enabled else 'Digest paused — click to enable' }}">
+            <span id="schedule-knob"
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                         {{ 'translate-x-6' if digest_enabled else 'translate-x-1' }}"></span>
+          </button>
+          <span id="schedule-label" class="text-sm {{ 'text-indigo-400' if digest_enabled else 'text-gray-500' }}">
+            {{ 'Scheduled' if digest_enabled else 'Paused' }}
+          </span>
+        </div>
+        <form method="post" action="/admin/send-digest" class="inline">
+          <button type="submit" class="text-sm bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-md transition-colors">
+            Send Digest Now
+          </button>
+        </form>
         <a href="/admin/add"
            class="text-sm bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-md transition-colors">
           + Add Game
         </a>
         <form method="post" action="/logout" class="inline">
-          <button class="text-sm text-gray-400 hover:text-white transition-colors">Log out</button>
+          <button class="text-sm text-gray-400 hover:text-white transition-colors">Log Out</button>
         </form>
       {% else %}
         <a href="/login" class="text-sm text-gray-400 hover:text-white transition-colors">Admin</a>
       {% endif %}
     </div>
+
+    {% if is_admin %}
+    <script>
+    (function () {
+      var btn = document.getElementById('schedule-toggle');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        fetch('/admin/digest/toggle-schedule', { method: 'POST' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            var enabled = data.enabled;
+            btn.dataset.enabled = enabled ? 'true' : 'false';
+            btn.classList.toggle('bg-indigo-600', enabled);
+            btn.classList.toggle('bg-gray-600', !enabled);
+            btn.title = enabled ? 'Digest scheduled — click to pause' : 'Digest paused — click to enable';
+            var knob = document.getElementById('schedule-knob');
+            knob.classList.toggle('translate-x-6', enabled);
+            knob.classList.toggle('translate-x-1', !enabled);
+            var label = document.getElementById('schedule-label');
+            label.textContent = enabled ? 'Scheduled' : 'Paused';
+            label.className = 'text-sm ' + (enabled ? 'text-indigo-400' : 'text-gray-500');
+          })
+          .catch(function () { alert('Failed to update digest schedule.'); });
+      });
+    })();
+    </script>
+    {% endif %}
   </nav>
 
   <main class="max-w-6xl mx-auto px-6 py-8">

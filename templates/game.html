@@ -211,8 +211,71 @@
     </form>
 
   </div>
+
+  <!-- Weekly digest toggle + one-off email -->
+  <div class="mt-4 pt-4 border-t border-gray-800 flex flex-wrap gap-4 items-center">
+
+    <!-- Weekly digest toggle -->
+    <div class="flex items-center gap-3">
+      <span class="text-sm text-gray-400">Weekly digest</span>
+      <button id="digest-toggle"
+              data-app-id="{{ game.app_id }}"
+              data-enabled="{{ 'true' if game.include_in_digest else 'false' }}"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none
+                     {{ 'bg-indigo-600' if game.include_in_digest else 'bg-gray-600' }}"
+              title="{{ 'Included in weekly digest — click to exclude' if game.include_in_digest else 'Excluded from weekly digest — click to include' }}">
+        <span id="digest-toggle-knob"
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                     {{ 'translate-x-6' if game.include_in_digest else 'translate-x-1' }}"></span>
+      </button>
+      <span id="digest-toggle-label" class="text-sm {{ 'text-indigo-400' if game.include_in_digest else 'text-gray-500' }}">
+        {{ 'In digest' if game.include_in_digest else 'Not in digest' }}
+      </span>
+    </div>
+
+    <!-- One-off email -->
+    <form method="post" action="/admin/game/{{ game.app_id }}/send-email"
+          class="flex items-center gap-2">
+      <input type="email" name="to_email" value=""
+             placeholder="recipient@example.com"
+             class="text-sm bg-gray-800 border border-gray-700 text-gray-300 placeholder-gray-600 px-2 py-1.5 rounded-md w-52 focus:outline-none focus:border-indigo-500">
+      <button type="submit"
+              class="text-sm bg-indigo-700 hover:bg-indigo-600 border border-indigo-600 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap">
+        Send email summary
+      </button>
+    </form>
+
+  </div>
 </div>
 {% endif %}
+
+<script>
+(function () {
+  var btn = document.getElementById('digest-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    var appId = btn.dataset.appId;
+    fetch('/admin/game/' + appId + '/toggle-digest', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var enabled = data.include_in_digest;
+        btn.dataset.enabled = enabled ? 'true' : 'false';
+        btn.classList.toggle('bg-indigo-600', enabled);
+        btn.classList.toggle('bg-gray-600', !enabled);
+        var knob = document.getElementById('digest-toggle-knob');
+        knob.classList.toggle('translate-x-6', enabled);
+        knob.classList.toggle('translate-x-1', !enabled);
+        var label = document.getElementById('digest-toggle-label');
+        label.textContent = enabled ? 'In digest' : 'Not in digest';
+        label.className = 'text-sm ' + (enabled ? 'text-indigo-400' : 'text-gray-500');
+        btn.title = enabled
+          ? 'Included in weekly digest — click to exclude'
+          : 'Excluded from weekly digest — click to include';
+      })
+      .catch(function () { alert('Failed to update digest setting.'); });
+  });
+})();
+</script>
 
 <!-- Run history table -->
 <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">

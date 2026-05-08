@@ -15,7 +15,7 @@ load_dotenv(override=True)
 from steam import SteamAPIError, fetch_game_name, fetch_reviews
 from analyze import analyze_reviews
 from email_sender import send_digest, send_multi_digest
-from trends import compute_trends, get_games, init_db, load_last_run, save_run
+from trends import compute_trends, get_games, get_setting, init_db, load_last_run, save_run
 
 
 def resolve_game_name(app_id: str, game_name: str) -> str:
@@ -87,6 +87,10 @@ def main():
 
     # ── DB-driven multi-game mode ──────────────────────────────────────────────
     if args.from_db:
+        if get_setting("digest_schedule_enabled", "1") != "1":
+            print("Weekly digest is paused via dashboard. Exiting.")
+            raise SystemExit(0)
+
         db_games = [g for g in get_games() if g["include_in_digest"]]
         if not db_games:
             print("No games in the DB have include_in_digest enabled.")

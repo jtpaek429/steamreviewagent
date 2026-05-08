@@ -1,8 +1,32 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
   <h1 class="text-2xl font-bold">Tracked Games</h1>
+  {% if is_admin %}
+  <div class="flex items-center gap-4">
+    <!-- Weekly digest schedule toggle -->
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-gray-400">Weekly digest</span>
+      <button id="schedule-toggle"
+              data-enabled="{{ 'true' if digest_enabled else 'false' }}"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none
+                     {{ 'bg-indigo-600' if digest_enabled else 'bg-gray-600' }}"
+              title="{{ 'Digest scheduled — click to pause' if digest_enabled else 'Digest paused — click to enable' }}">
+        <span id="schedule-knob"
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                     {{ 'translate-x-6' if digest_enabled else 'translate-x-1' }}"></span>
+      </button>
+      <span id="schedule-label" class="text-sm {{ 'text-indigo-400' if digest_enabled else 'text-gray-500' }}">
+        {{ 'Scheduled' if digest_enabled else 'Paused' }}
+      </span>
+    </div>
+    <a href="/admin/add"
+       class="text-sm px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors">
+      + Add Game
+    </a>
+  </div>
+  {% endif %}
 </div>
 
 {% if not games %}
@@ -19,54 +43,121 @@
 {% else %}
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {% for game in games %}
-  <a href="/game/{{ game.app_id }}"
-     class="block bg-gray-900 border border-gray-800 rounded-lg p-5 hover:border-gray-600 transition-colors group">
+  <div class="bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-600 transition-colors group flex flex-col">
 
-    <div class="flex items-start justify-between gap-2 mb-3">
-      <div class="flex items-center gap-2 min-w-0">
-        <h2 class="font-semibold text-white group-hover:text-blue-300 transition-colors leading-snug truncate">
-          {{ game.game_name }}
-        </h2>
-        {% if game.include_in_digest %}
-          <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-400 border border-indigo-800/60 leading-none">
+    <!-- Clickable card body -->
+    <a href="/game/{{ game.app_id }}" class="block p-5 pb-3 flex-1">
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <h2 class="font-semibold text-white group-hover:text-blue-300 transition-colors leading-snug truncate">
+            {{ game.game_name }}
+          </h2>
+          <span id="digest-badge-{{ game.app_id }}"
+                class="shrink-0 text-[10px] px-1.5 py-0.5 rounded leading-none transition-opacity
+                       bg-indigo-900/60 text-indigo-400 border border-indigo-800/60
+                       {{ 'opacity-0 pointer-events-none' if not game.include_in_digest else '' }}">
             digest
           </span>
+        </div>
+        {% if game.latest_run %}
+          {% set s = game.latest_run.overall_sentiment %}
+          <div class="flex flex-col items-end gap-0.5 shrink-0">
+            <span class="text-xs px-2 py-0.5 rounded-full
+              {% if s == 'positive' %}bg-green-900 text-green-300
+              {% elif s == 'negative' %}bg-red-900 text-red-300
+              {% else %}bg-yellow-900 text-yellow-300{% endif %}">
+              {{ s }}
+            </span>
+            <span class="text-[10px] text-gray-500">7-day AI sentiment</span>
+          </div>
         {% endif %}
       </div>
+
       {% if game.latest_run %}
-        {% set s = game.latest_run.overall_sentiment %}
-        <div class="flex flex-col items-end gap-0.5 shrink-0">
-          <span class="text-xs px-2 py-0.5 rounded-full
-            {% if s == 'positive' %}bg-green-900 text-green-300
-            {% elif s == 'negative' %}bg-red-900 text-red-300
-            {% else %}bg-yellow-900 text-yellow-300{% endif %}">
-            {{ s }}
-          </span>
-          <span class="text-[10px] text-gray-500">7-day AI sentiment</span>
+        <p class="text-sm text-gray-400 mb-3">
+          {{ game.latest_run.review_count }} reviews in last 7 days &middot; {{ game.latest_run.run_date }}
+        </p>
+        <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Top Identified Themes</p>
+        <div class="flex flex-wrap gap-1">
+          {% for theme in game.latest_run.themes[:3] %}
+            <span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded">{{ theme.name }}</span>
+          {% endfor %}
         </div>
+      {% else %}
+        <p class="text-sm text-gray-500 italic">No runs yet</p>
+      {% endif %}
+    </a>
+
+    <!-- Card footer -->
+    <div class="px-5 pb-4 flex items-center justify-between">
+      <p class="text-xs text-gray-600">
+        {{ game.run_count }} run{{ 's' if game.run_count != 1 }} &middot; App ID {{ game.app_id }}
+      </p>
+      {% if is_admin %}
+      <button class="digest-toggle text-xs px-2 py-0.5 rounded border transition-colors
+                     {{ 'border-indigo-700 text-indigo-400 hover:bg-indigo-900/40' if game.include_in_digest else 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-400' }}"
+              data-app-id="{{ game.app_id }}"
+              data-enabled="{{ 'true' if game.include_in_digest else 'false' }}"
+              title="{{ 'In weekly digest — click to remove' if game.include_in_digest else 'Not in digest — click to add' }}">
+        {{ 'In digest' if game.include_in_digest else 'Add to digest' }}
+      </button>
       {% endif %}
     </div>
 
-    {% if game.latest_run %}
-      <p class="text-sm text-gray-400 mb-3">
-        {{ game.latest_run.review_count }} reviews in last 7 days &middot; {{ game.latest_run.run_date }}
-      </p>
-      <p class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Top Identified Themes</p>
-      <div class="flex flex-wrap gap-1">
-        {% for theme in game.latest_run.themes[:3] %}
-          <span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded">{{ theme.name }}</span>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="text-sm text-gray-500 italic">No runs yet</p>
-    {% endif %}
-
-    <p class="text-xs text-gray-600 mt-3">
-      {{ game.run_count }} run{{ 's' if game.run_count != 1 }} &middot; App ID {{ game.app_id }}
-    </p>
-  </a>
+  </div>
   {% endfor %}
 </div>
+{% endif %}
+
+{% if is_admin %}
+<script>
+// Schedule toggle
+(function () {
+  var btn = document.getElementById('schedule-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    fetch('/admin/digest/toggle-schedule', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var enabled = data.enabled;
+        btn.dataset.enabled = enabled ? 'true' : 'false';
+        btn.classList.toggle('bg-indigo-600', enabled);
+        btn.classList.toggle('bg-gray-600', !enabled);
+        btn.title = enabled ? 'Digest scheduled — click to pause' : 'Digest paused — click to enable';
+        var knob = document.getElementById('schedule-knob');
+        knob.classList.toggle('translate-x-6', enabled);
+        knob.classList.toggle('translate-x-1', !enabled);
+        var label = document.getElementById('schedule-label');
+        label.textContent = enabled ? 'Scheduled' : 'Paused';
+        label.className = 'text-sm ' + (enabled ? 'text-indigo-400' : 'text-gray-500');
+      })
+      .catch(function () { alert('Failed to update digest schedule.'); });
+  });
+})();
+
+// Per-card digest toggles
+document.querySelectorAll('.digest-toggle').forEach(function (btn) {
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var appId = btn.dataset.appId;
+    fetch('/admin/game/' + appId + '/toggle-digest', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var enabled = data.include_in_digest;
+        btn.dataset.enabled = enabled ? 'true' : 'false';
+        btn.textContent = enabled ? 'In digest' : 'Add to digest';
+        btn.title = enabled ? 'In weekly digest — click to remove' : 'Not in digest — click to add';
+        btn.className = 'digest-toggle text-xs px-2 py-0.5 rounded border transition-colors ' +
+          (enabled
+            ? 'border-indigo-700 text-indigo-400 hover:bg-indigo-900/40'
+            : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-400');
+        var badge = document.getElementById('digest-badge-' + appId);
+        if (badge) badge.classList.toggle('opacity-0', !enabled);
+      })
+      .catch(function () { alert('Failed to update digest setting.'); });
+  });
+});
+</script>
 {% endif %}
 
 {% endblock %}

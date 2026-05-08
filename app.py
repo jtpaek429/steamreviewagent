@@ -337,6 +337,20 @@ def refresh_votes_view(app_id: str):
                             next=url_for("game_detail", app_id=app_id)))
 
 
+@app.route("/admin/game/<app_id>/reanalyze", methods=["POST"])
+@admin_required
+def reanalyze_game_view(app_id: str):
+    game = get_game(app_id)
+    if not game:
+        return "Game not found", 404
+    job_id = _create_job("Starting AI analysis...")
+    thread = threading.Thread(target=_run_backfill, args=(app_id, job_id), daemon=True)
+    thread.start()
+    return redirect(url_for("job_status_page", job_id=job_id,
+                            game_name=game["game_name"],
+                            next=url_for("game_detail", app_id=app_id)))
+
+
 @app.route("/admin/status/<job_id>")
 @admin_required
 def job_status_page(job_id: str):

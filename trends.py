@@ -53,6 +53,13 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+
 
 def save_run(
     app_id: str,
@@ -104,6 +111,22 @@ def remove_game(app_id: str) -> None:
     """Remove a game from the tracked list. Leaves runs data intact."""
     with _connect() as conn:
         conn.execute("DELETE FROM games WHERE app_id = ?", (app_id,))
+
+
+def get_setting(key: str, default: str = "") -> str:
+    """Return a setting value by key, or default if not set."""
+    with _connect() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    """Upsert a setting value."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
 
 def set_digest_flag(app_id: str, include: bool) -> None:

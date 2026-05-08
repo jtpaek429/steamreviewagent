@@ -25,11 +25,13 @@ from trends import (
     get_all_runs,
     get_game,
     get_games,
+    get_setting,
     init_db,
     load_last_run,
     remove_game,
     save_run,
     set_digest_flag,
+    set_setting,
     update_run_vote_counts,
 )
 
@@ -351,7 +353,9 @@ def _enrich_games(games: list[dict]) -> list[dict]:
 @app.route("/")
 def index():
     games = _enrich_games(get_games())
-    return render_template("index.html", games=games, is_admin=session.get("is_admin"))
+    digest_enabled = get_setting("digest_schedule_enabled", "1") == "1"
+    return render_template("index.html", games=games, is_admin=session.get("is_admin"),
+                           digest_enabled=digest_enabled)
 
 
 @app.route("/game/<app_id>")
@@ -521,6 +525,15 @@ def reanalyze_game_view(app_id: str):
     return redirect(url_for("job_status_page", job_id=job_id,
                             game_name=game["game_name"],
                             next=url_for("game_detail", app_id=app_id)))
+
+
+@app.route("/admin/digest/toggle-schedule", methods=["POST"])
+@admin_required
+def toggle_schedule_view():
+    current = get_setting("digest_schedule_enabled", "1")
+    new_value = "0" if current == "1" else "1"
+    set_setting("digest_schedule_enabled", new_value)
+    return jsonify({"enabled": new_value == "1"})
 
 
 @app.route("/admin/game/<app_id>/toggle-digest", methods=["POST"])

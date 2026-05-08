@@ -21,14 +21,21 @@ class SteamAPIError(Exception):
     pass
 
 
-def fetch_reviews(app_id: str, window_days: int = WINDOW_DAYS) -> list[dict]:
+def fetch_reviews(app_id: str, window_days: int = WINDOW_DAYS, end_cutoff_ts: int | None = None) -> list[dict]:
     """
-    Return up to MAX_REVIEWS review dicts from the last window_days days.
-    Each dict has keys: review (str), voted_up (bool), timestamp_created (int).
+    Return up to MAX_REVIEWS review dicts from a time window.
 
+    The window is [now - window_days, end_cutoff_ts). If end_cutoff_ts is None it
+    defaults to now, giving the standard "last N days" behaviour. Pass an explicit
+    end_cutoff_ts to fetch a historical slice (e.g. for per-week backfill).
+
+    Each dict has keys: review (str), voted_up (bool), timestamp_created (int).
     Raises SteamAPIError on bad App ID, network failure, or Steam error response.
     """
-    cutoff_ts = int((datetime.now(timezone.utc) - timedelta(days=window_days)).timestamp())
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    cutoff_ts = now_ts - int(timedelta(days=window_days).total_seconds())
+    if end_cutoff_ts is None:
+        end_cutoff_ts = now_ts
 
     collected: list[dict] = []
     cursor = "*"
@@ -84,11 +91,13 @@ def fetch_reviews(app_id: str, window_days: int = WINDOW_DAYS) -> list[dict]:
             if ts < cutoff_ts:
                 # Reviews are newest-first; once we're past the window we're done
                 return _maybe_sample(collected)
-            collected.append({
-                "review": review.get("review", "").strip(),
-                "voted_up": review.get("voted_up", False),
-                "timestamp_created": ts,
-            })
+            if ts < end_cutoff_ts:
+                # Only collect reviews inside [cutoff_ts, end_cutoff_ts)
+                collected.append({
+                    "review": review.get("review", "").strip(),
+                    "voted_up": review.get("voted_up", False),
+                    "timestamp_created": ts,
+                })
 
         # Stop early if we've already collected more than enough to sample from
         if len(collected) >= MAX_REVIEWS * 2:

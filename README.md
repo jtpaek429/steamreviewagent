@@ -10,7 +10,7 @@ A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them
 - Stores history in SQLite and serves a Flask dashboard with trend charts
 
 ### Why I built this
-This is a tool I wish I had while I still worked at Pahdo Labs to help track our game + our comps' performance. While there are existing tools that provide high level positive/negative review ratings over time, there aren't any tools that helps you quickly understand the sentiment & underlying context behind user reviews. I wanted to make something where I could easily access that sentiment & track it longitudinally.
+This is a tool I wish I had while I still worked at Pahdo Labs. While there are some existing tools that provide high level positive/negative review ratings over time, there aren't any that help you quickly understand the sentiment & underlying context behind user reviews. I wanted to make something where I could easily access that sentiment & track it longitudinally across a number of different games, including our own & our comps.
 
 ### Stack
 Python · Flask · SQLite · Claude API (Anthropic) · SendGrid · Railway

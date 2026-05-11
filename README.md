@@ -1,19 +1,37 @@
 # Steam Review Agent
-A personal dashboard that automatically tracks and summarizes Steam game reviews using AI. Each week, it fetches recent player reviews from Steam's API, sends them to Claude for analysis, and returns a structured breakdown of the top themes driving sentiment — categorized as positive, mixed, or negative.
+A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them through Claude to extract sentiment and themes, and delivers a digest email + persistent dashboard.
 
-Results are stored in a SQLite database and surfaced through a Flask web dashboard with per-game sentiment trend charts, week-over-week theme tracking, and spike detection when a topic suddenly surges. An optional weekly email digest delivers the summary to your inbox.
+**Live demo:** [reviews.jonathanpaek.com](https://reviews.jonathanpaek.com)
 
-Stack: Python · Flask · Claude API (Sonnet) · Steam Web API · SendGrid · SQLite · Railway
+### What it does
+- Fetches reviews from the Steam public API on a Mon–Sun cadence
+- Sends reviews to Claude (claude-sonnet-4-6) via structured tool use to extract: overall sentiment, top themes, representative quotes, and flagged spikes
+- Emails a weekly digest via SendGrid
+- Stores history in SQLite and serves a Flask dashboard with trend charts
 
-Key features:
+### Stack
+Python · Flask · SQLite · Claude API (Anthropic) · SendGrid · Railway
 
-Tracks multiple games; analysis is anchored to Mon–Sun UTC weeks for consistent comparisons
-Dashboard shows current Steam rating, 7-day AI sentiment, top themes, and trend charts
-Weekly job updates all tracked games and optionally sends a digest email — both independently toggled from the admin navbar
-Deployed on Railway with a cron webhook (/admin/run-weekly) triggering the weekly pipeline
+### Pipeline
+Steam API → steam.py → analyze.py (Claude) → email_sender.py (SendGrid) → trends.py (SQLite) → app.py (Flask dashboard)
 
+### Key features / decisions
+- Dashboard shows current Steam rating, 7-day AI sentiment, top themes, and trend charts
+- Week anchoring from Mon 00:00 → Sun 23:59 for consistent comparison window 
+- Weekly job updates all tracked games and optionally sends a digest email, both independently toggled from the admin navbar
+- Deployed on Railway with a cron webhook (/admin/run-weekly) to trigger the weekly pipeline
 
-My main learning goal for this project was to experiment building out simple agentic workflows that I wish I had set up while working in games. 
+## Screenshots & Slay the Spire 2 Mini Case Study
+While I don't play, Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19 and was able to identify that it's been primarily driven by some balance changes the developers made that drew an outsized negative reaction from their Chinese playerbase. One bonus fun fact that the Agent was able to pick up on is that Discord, the main social messaging platform game studios use for community management & feedback collection, is blocked by China's firewall, which led to Steam being the primary outlet that users used to voice their dissatisfaction.
 
-Rough data flow:
-Railway pings the Flask app on a schedule → Flask fetches raw reviews from Steam → ships them to Claude for categorization → saves the structured output to SQLite → optionally emails a digest via SendGrid. The dashboard is a read layer on top of the same SQLite database and reflects the lateset run. 
+</br>
+<img width="1447" height="702" alt="image" src="https://github.com/user-attachments/assets/5aa99b2e-fe52-476a-938a-12d22988a2fe" />
+</br>
+<img width="1136" height="665" alt="image" src="https://github.com/user-attachments/assets/2cd7bf01-8e94-479a-81aa-f73ee0560701" />
+</br>
+<img width="1295" height="375" alt="image" src="https://github.com/user-attachments/assets/0b17eb33-265c-492a-9676-340eb2b26ab5" />
+</br>
+<img width="1449" height="419" alt="image" src="https://github.com/user-attachments/assets/dcb91dfa-6dfe-482b-9ed7-c95c3327092e" />
+</br>
+<img width="416" height="436" alt="image" src="https://github.com/user-attachments/assets/d347a07d-df32-4d6a-9bb0-3514a6a07b09" />
+

@@ -5,12 +5,12 @@ A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them
 
 ### What it does
 - Fetches reviews from the Steam public API on a Mon–Sun cadence
-- Sends reviews to Claude (claude-sonnet-4-6) via structured tool use to extract: overall sentiment, top themes, representative quotes, and flagged spikes
+- Sends reviews to Claude (claude-sonnet-4-6) via structured tool use to extract overall sentiment, top themes, representative quotes, and flagged spikes
 - Emails a weekly digest via SendGrid
 - Stores history in SQLite and serves a Flask dashboard with trend charts
 
 ### Why I built this
-This is a tool I wish I had while I still worked at Pahdo Labs. While there are some existing tools that provide high level positive/negative review ratings over time, there aren't any that help you quickly understand the sentiment & underlying context behind user reviews. I wanted to make something where I could easily access that sentiment & track it longitudinally across a number of different games.
+This is a tool I wish I had while I still worked at Pahdo Labs. While there are some existing tools that provide high level positive/negative game review ratings, there aren't any that help you quickly understand player review sentiment & the underlying context behind those reviews. I wanted to make something where I could easily access that user sentiment as well as track relevant themes longitudinally across a number of different games.
 
 ### Stack
 Python · Flask · SQLite · Claude API (Anthropic) · SendGrid · Railway
@@ -25,7 +25,7 @@ Steam API → steam.py → analyze.py (Claude) → email_sender.py (SendGrid) �
 - Deployed on Railway with a cron webhook (/admin/run-weekly) to trigger the weekly pipeline
 
 ## Screenshots & Slay the Spire 2 Mini Case Study
-Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19. The pipeline identified that some balance changes drew an outsized negative reaction from Chinese players and was also able to pick up on Discord being blocked in China, leaving Steam as the primary outlet for community feedback & protest.
+Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19. The pipeline identified that some balance changes drew an outsized negative reaction from Chinese players. It was also able to pick up on Discord being blocked in China, leaving Steam as the primary outlet for community feedback & protest. 
 
 <strong>Dashboard: tracked games index</strong>
 <img width="1447" height="702" alt="image" src="https://github.com/user-attachments/assets/5aa99b2e-fe52-476a-938a-12d22988a2fe" />

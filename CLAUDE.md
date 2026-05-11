@@ -90,7 +90,7 @@ Always uses Mon–Sun date anchoring (`run_date` = Sunday ending the window).
 - **0-themes warning:** shown when a run has >0 reviews but 0 themes — flags analysis failures.
 - **0-review runs:** when `review_count == 0` (sentinel run from a quiet week), AI Sentiment card shows "—" + "No reviews in this period"; Last Analysis Run card shows "No reviews in this period"; index card hides the sentiment badge and themes.
 - **Index card:** shows "Last Review Period: [Mon] – [Sun, YYYY]" + "X reviews analyzed" (replaces old "X reviews in last 7 days · run_date").
-- `static/tailwind.min.css` + Chart.js v4 — no build step. Tailwind CDN replaced with a locally-generated file (scanned from templates) to fix Edge's Strict Tracking Prevention "Not Secure" warning. Regenerate: `npx tailwindcss@3 -i input.css -o static/tailwind.min.css --minify --content "templates/**/*.html"` (input.css has the three `@tailwind` directives)
+- Tailwind CDN (`https://cdn.tailwindcss.com`) + Chart.js v4 — no build step. We previously switched to a pre-generated `static/tailwind.min.css` to fix Edge's "Not Secure" warning, but the warning persisted and the pre-generated approach caused pain with git worktrees (each worktree needs its own `npx tailwindcss` regeneration whenever new utility classes are added). Switched back to CDN. Edge's "Not Secure" is unrelated to the CDN — likely an HTTPS/mixed-content issue with the Railway deployment.
 
 ### steam.py
 - `fetch_reviews(app_id, window_days=7, end_cutoff_ts=None, start_cutoff_ts=None)` — pass `start_cutoff_ts` + `end_cutoff_ts` for exact Mon-Sun windows (backfill); omit both for "last N days" (CLI agent).

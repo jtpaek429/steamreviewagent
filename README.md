@@ -25,7 +25,7 @@ Steam API → steam.py → analyze.py (Claude) → email_sender.py (SendGrid) �
 - Deployed on Railway with a cron webhook (/admin/run-weekly) to trigger the weekly pipeline
 
 ## Screenshots & Slay the Spire 2 Mini Case Study
-Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19. The pipeline identified that some balance changes drew an outsized negative reaction from Chinese players and was also able to pick up on Discord being blocked in China, making Steam the primary outlet for community feedback & protest vs. the studio's own communication channels.
+Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19. The pipeline identified that some balance changes drew an outsized negative reaction from Chinese players and was also able to pick up on Discord being blocked in China, leaving Steam as the primary outlet for community feedback & protest.
 
 <strong>Dashboard: tracked games index</strong>
 <img width="1447" height="702" alt="image" src="https://github.com/user-attachments/assets/5aa99b2e-fe52-476a-938a-12d22988a2fe" />

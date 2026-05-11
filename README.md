@@ -24,12 +24,15 @@ Steam API → steam.py → analyze.py (Claude) → email_sender.py (SendGrid) �
 ## Screenshots & Slay the Spire 2 Mini Case Study
 Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19. The pipeline identified that some balance changes drew an outsized negative reaction from Chinese players and was also able to pick up on Discord being blocked in China, making Steam the primary outlet for community feedback & protest vs. the studio's own communication channels.
 
-<br>
+<strong>Dashboard: tracked games index</strong>
 <img width="1447" height="702" alt="image" src="https://github.com/user-attachments/assets/5aa99b2e-fe52-476a-938a-12d22988a2fe" />
 <br>
+<strong>Game detail: Slay the Spire 2 sentiment trend & top themes</strong>
 <img width="1136" height="665" alt="image" src="https://github.com/user-attachments/assets/2cd7bf01-8e94-479a-81aa-f73ee0560701" />
 <br>
+<strong>Weekly digest email snippet</strong>
 <img width="1449" height="419" alt="image" src="https://github.com/user-attachments/assets/dcb91dfa-6dfe-482b-9ed7-c95c3327092e" />
 <br>
+<strong>Context: Steam's native review page split by recent review language</strong>
 <img width="416" height="436" alt="image" src="https://github.com/user-attachments/assets/d347a07d-df32-4d6a-9bb0-3514a6a07b09" />
 

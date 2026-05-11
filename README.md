@@ -1,5 +1,5 @@
 # Steam Review Agent
-A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them through Claude to extract sentiment and themes, and delivers a digest email + persistent dashboard. This is a tool that I wish I had while working on Starlight Re:Volver @ Pahdo Labs.
+A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them through Claude to extract sentiment and themes, and delivers a digest email + persistent dashboard. 
 
 **Live demo:** [reviews.jonathanpaek.com](https://reviews.jonathanpaek.com)
 
@@ -8,6 +8,9 @@ A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them
 - Sends reviews to Claude (claude-sonnet-4-6) via structured tool use to extract: overall sentiment, top themes, representative quotes, and flagged spikes
 - Emails a weekly digest via SendGrid
 - Stores history in SQLite and serves a Flask dashboard with trend charts
+
+### Why I built this
+This is a tool I wish I had while I still worked at Pahdo Labs to help track our game + our comps' performance. While there are existing tools that provide high level positive/negative review ratings over time, there aren't any tools that helps you quickly understand the sentiment & underlying context behind user reviews. I wanted to make something where I could easily access that sentiment & track it longitudinally.
 
 ### Stack
 Python · Flask · SQLite · Claude API (Anthropic) · SendGrid · Railway

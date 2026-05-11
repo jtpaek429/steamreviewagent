@@ -69,7 +69,10 @@
 
   <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
     <p class="text-xs font-bold text-gray-500 mb-1">Last 7-Day Steam Rating</p>
-    {% if recent_rating %}
+    {% if latest.review_count == 0 %}
+      <p class="text-base font-semibold text-gray-500">—</p>
+      <p class="text-xs text-gray-500 mt-1">No reviews in this period</p>
+    {% elif recent_rating %}
       <p class="text-base font-semibold {{ rating_color(recent_rating) }}">{{ recent_rating }}</p>
       <p class="text-xs text-gray-500 mt-1"><span class="text-green-500">👍</span> {{ latest.positive_count }} <span class="text-red-500">👎</span> {{ latest.negative_count }} in last run</p>
       {% if rating_low_sample %}
@@ -164,6 +167,9 @@
     <div id="week-toggles" class="flex flex-wrap gap-1.5 mb-4 items-center"></div>
 
     {% if latest_with_themes %}
+      <div id="themes-no-data" class="hidden items-center justify-center py-10 text-sm text-gray-500">
+        No reviews in this period
+      </div>
       <canvas id="themesChart"></canvas>
     {% else %}
       <p class="text-sm text-gray-500">No theme data available.</p>
@@ -331,6 +337,9 @@ const allWeeksThemes = {
   {% endfor %}
 };
 
+// Dates that have a sentinel run (0 reviews fetched — quiet week, not missing data)
+const zeroReviewDates = new Set(chartData.zero_review_dates || []);
+
 const gridColor = '#1f2937';
 const tickColor = '#6b7280';
 const tickColorEmpty = 'rgba(107,114,128,0.35)';
@@ -392,6 +401,11 @@ const noDataPlugin = {
       const x2 = chartArea.left + endIdx * barW;
       const w  = x2 - x1;
 
+      // Determine pill text: zero-review sentinel vs truly missing data
+      const regionLabels = data.labels.slice(regionStart, endIdx);
+      const hasZeroReview = regionLabels.some(l => zeroReviewDates.has(l));
+      const text = hasZeroReview ? 'No reviews in this period' : 'No analyzed data for this period';
+
       ctx.save();
       ctx.fillStyle = 'rgba(55,65,81,0.28)';
       ctx.fillRect(x1, chartArea.top, w, chartArea.height);
@@ -399,7 +413,6 @@ const noDataPlugin = {
       if (w > 110) {
         const cx   = x1 + w / 2;
         const cy   = chartArea.top + chartArea.height / 2;
-        const text = 'No analyzed data for this period';
         ctx.font   = '11px system-ui,-apple-system,sans-serif';
         const tw   = ctx.measureText(text).width + 20;
         const th   = 24;
@@ -513,8 +526,8 @@ function setSentimentTimeframe(days) {
   // Merge, deduplicate, sort oldest→newest
   const allLabels = [...new Set([...canonicalSundays, ...existingInRange])].sort();
 
-  // Update the set used by tick color callback
-  sentimentDataSet = new Set(existingInRange);
+  // Exclude zero-review sentinels from the "has data" set so their ticks are dimmed
+  sentimentDataSet = new Set(existingInRange.filter(l => !zeroReviewDates.has(l)));
 
   const dataMap = {};
   chartData.labels.forEach((lbl, i) => {
@@ -525,10 +538,11 @@ function setSentimentTimeframe(days) {
     };
   });
 
+  // Zero-review dates get null so the noDataPlugin overlay renders for them
   activityChart.data.labels           = allLabels;
-  activityChart.data.datasets[0].data = allLabels.map(l => dataMap[l]?.pos ?? null);
-  activityChart.data.datasets[1].data = allLabels.map(l => dataMap[l]?.mix ?? null);
-  activityChart.data.datasets[2].data = allLabels.map(l => dataMap[l]?.neg ?? null);
+  activityChart.data.datasets[0].data = allLabels.map(l => (!dataMap[l] || zeroReviewDates.has(l)) ? null : dataMap[l].pos);
+  activityChart.data.datasets[1].data = allLabels.map(l => (!dataMap[l] || zeroReviewDates.has(l)) ? null : dataMap[l].mix);
+  activityChart.data.datasets[2].data = allLabels.map(l => (!dataMap[l] || zeroReviewDates.has(l)) ? null : dataMap[l].neg);
   activityChart.update();
 }
 
@@ -586,10 +600,20 @@ let activeDate = {{ latest_with_themes.run_date | tojson }};
 
 function showWeek(runDate) {
   activeDate = runDate;
-  const newData = buildThemesData(runDate);
-  themesChart.data.labels   = newData.labels;
-  themesChart.data.datasets = newData.datasets;
-  themesChart.update();
+  const isZero = zeroReviewDates.has(runDate);
+
+  // Toggle between chart canvas and no-data message
+  const canvas = document.getElementById('themesChart');
+  const noData = document.getElementById('themes-no-data');
+  if (canvas) canvas.style.display = isZero ? 'none' : 'block';
+  if (noData) noData.style.display = isZero ? 'flex' : 'none';
+
+  if (!isZero) {
+    const newData = buildThemesData(runDate);
+    themesChart.data.labels   = newData.labels;
+    themesChart.data.datasets = newData.datasets;
+    themesChart.update();
+  }
 
   document.querySelectorAll('.week-btn').forEach(btn => {
     const active = btn.dataset.date === runDate;
@@ -601,10 +625,10 @@ function showWeek(runDate) {
   if (sel) sel.value = '';
 }
 
-// Build week-toggle UI from allWeeksThemes
+// Build week-toggle UI from allWeeksThemes (includes zero-review sentinel weeks)
 (function buildWeekToggles() {
   const weeksWithThemes = Object.keys(allWeeksThemes)
-    .filter(d => allWeeksThemes[d] && allWeeksThemes[d].length > 0)
+    .filter(d => (allWeeksThemes[d] && allWeeksThemes[d].length > 0) || zeroReviewDates.has(d))
     .sort((a, b) => b.localeCompare(a));   // newest first
 
   const recentWeeks = weeksWithThemes.slice(0, 4);

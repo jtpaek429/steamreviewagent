@@ -39,6 +39,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+WEEKLY_SECRET  = os.environ.get("WEEKLY_SECRET", "")
 
 init_db()
 
@@ -48,6 +49,7 @@ def inject_globals():
     is_admin = session.get("is_admin", False)
     return {
         "digest_enabled": get_setting("digest_schedule_enabled", "1") == "1" if is_admin else False,
+        "dashboard_update_enabled": get_setting("dashboard_update_enabled", "0") == "1" if is_admin else False,
     }
 
 
@@ -262,50 +264,125 @@ def _run_send_email(app_id: str, to_email: str, job_id: str) -> None:
 
 
 def _run_digest(job_id: str) -> None:
-    """Run the full pipeline for all digest-enabled games and send consolidated email."""
+    """Combined weekly job: update dashboard data for all games and/or send digest email.
+
+    Respects two independent toggles:
+    - dashboard_update_enabled: analyze the last complete Mon–Sun week for ALL tracked games
+    - digest_schedule_enabled:  send a consolidated email for digest-enabled games
+
+    Always uses proper Mon–Sun date anchoring (run_date = Sunday ending the week).
+    Games with no reviews in the window get a sentinel run (review_count=0) so the
+    dashboard shows "No reviews in this period" rather than stale data.
+    """
     from email_sender import send_multi_digest
 
     try:
-        db_games = [g for g in get_games() if g["include_in_digest"]]
-        if not db_games:
-            _update_job(job_id, "error", "No games have digest enabled.")
+        dashboard_enabled = get_setting("dashboard_update_enabled", "0") == "1"
+        digest_email_enabled = get_setting("digest_schedule_enabled", "1") == "1"
+
+        if not dashboard_enabled and not digest_email_enabled:
+            _update_job(job_id, "complete", "Both toggles are off — nothing to do.")
             return
 
-        results = []
-        for i, game in enumerate(db_games, 1):
+        all_games = get_games()
+        if not all_games:
+            _update_job(job_id, "error", "No games tracked.")
+            return
+
+        # If dashboard update is on, analyze every game; otherwise only digest games
+        games_to_analyze = all_games if dashboard_enabled else [
+            g for g in all_games if g["include_in_digest"]
+        ]
+        if not games_to_analyze:
+            _update_job(job_id, "error", "No games to analyze.")
+            return
+
+        # Use the last complete Mon–Sun window (properly anchored)
+        start_ts, end_ts, sunday_date = _get_week_windows(1)[0]
+
+        analysis_results: dict[str, dict] = {}
+
+        for i, game in enumerate(games_to_analyze, 1):
             app_id = str(game["app_id"])
             game_name = game["game_name"]
-            _update_job(job_id, "running", f"Processing {game_name} ({i}/{len(db_games)})...")
+            _update_job(job_id, "running",
+                        f"Analyzing {game_name} ({i}/{len(games_to_analyze)})...")
 
             try:
-                reviews = fetch_reviews(app_id)
+                reviews = fetch_reviews(app_id, start_cutoff_ts=start_ts, end_cutoff_ts=end_ts)
             except SteamAPIError as e:
-                results.append({"app_id": app_id, "game_name": game_name,
-                                 "analysis": None, "trend_spikes": [], "error": str(e)})
+                analysis_results[app_id] = {
+                    "game_name": game_name, "analysis": None, "trend_spikes": [], "error": str(e)
+                }
+                continue
+
+            if not reviews:
+                # Save a sentinel run so the dashboard date advances and shows "No reviews"
+                save_run(
+                    app_id,
+                    {"review_count": 0, "overall_sentiment": "none",
+                     "themes": [], "flagged_spikes": []},
+                    run_date=sunday_date,
+                    positive_count=0,
+                    negative_count=0,
+                )
+                analysis_results[app_id] = {
+                    "game_name": game_name, "analysis": None,
+                    "trend_spikes": [], "error": "No reviews this week",
+                }
                 continue
 
             try:
                 analysis = analyze_reviews(reviews)
             except (ValueError, RuntimeError) as e:
-                results.append({"app_id": app_id, "game_name": game_name,
-                                 "analysis": None, "trend_spikes": [], "error": str(e)})
+                analysis_results[app_id] = {
+                    "game_name": game_name, "analysis": None, "trend_spikes": [], "error": str(e)
+                }
                 continue
 
-            positive_count = sum(1 for r in reviews if r["voted_up"])
-            negative_count = len(reviews) - positive_count
+            pos = sum(1 for r in reviews if r["voted_up"])
+            neg = len(reviews) - pos
             previous_run = load_last_run(app_id)
             trend_spikes = compute_trends(analysis, previous_run) if previous_run else []
-            save_run(app_id, analysis, positive_count=positive_count, negative_count=negative_count)
-            results.append({"app_id": app_id, "game_name": game_name,
-                            "analysis": analysis, "trend_spikes": trend_spikes, "error": None})
+            save_run(app_id, analysis, run_date=sunday_date,
+                     positive_count=pos, negative_count=neg)
+            analysis_results[app_id] = {
+                "game_name": game_name, "analysis": analysis,
+                "trend_spikes": trend_spikes, "error": None,
+            }
 
-        n_ok = sum(1 for r in results if r["analysis"] is not None)
-        _update_job(job_id, "running", f"Sending digest email ({n_ok}/{len(db_games)} succeeded)...")
-        send_multi_digest(results)
-        _update_job(job_id, "complete", f"Digest sent — {n_ok}/{len(db_games)} game(s) included.")
+        # Send digest email if enabled
+        if digest_email_enabled:
+            digest_results = [
+                {
+                    "app_id": str(g["app_id"]),
+                    "game_name": analysis_results[str(g["app_id"])]["game_name"],
+                    "analysis": analysis_results[str(g["app_id"])]["analysis"],
+                    "trend_spikes": analysis_results[str(g["app_id"])]["trend_spikes"],
+                    "error": analysis_results[str(g["app_id"])]["error"],
+                }
+                for g in all_games
+                if g["include_in_digest"] and str(g["app_id"]) in analysis_results
+            ]
+            if digest_results:
+                n_ok = sum(1 for r in digest_results if r["analysis"] is not None)
+                _update_job(job_id, "running",
+                            f"Sending digest email ({n_ok}/{len(digest_results)} game(s) analyzed)...")
+                send_multi_digest(digest_results)
+
+        summary_parts = []
+        if dashboard_enabled:
+            n_updated = sum(1 for r in analysis_results.values() if r["analysis"] is not None)
+            summary_parts.append(
+                f"dashboard updated ({n_updated}/{len(games_to_analyze)} analyzed)"
+            )
+        if digest_email_enabled:
+            summary_parts.append("digest email sent")
+        _update_job(job_id, "complete",
+                    f"Weekly job complete — {', '.join(summary_parts)}.")
 
     except Exception as e:
-        _update_job(job_id, "error", f"Digest failed: {e}")
+        _update_job(job_id, "error", f"Weekly job failed: {e}")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -352,7 +429,17 @@ def _enrich_games(games: list[dict]) -> list[dict]:
     for g in games:
         runs = get_all_runs(g["app_id"])
         latest = runs[-1] if runs else None
-        enriched.append({**g, "latest_run": latest, "run_count": len(runs)})
+        period_label = None
+        if latest:
+            sunday = datetime.strptime(latest["run_date"], "%Y-%m-%d")
+            monday = sunday - timedelta(days=6)
+            period_label = f"{monday.strftime('%b %-d')} – {sunday.strftime('%b %-d, %Y')}"
+        enriched.append({
+            **g,
+            "latest_run": latest,
+            "run_count": len(runs),
+            "latest_period_label": period_label,
+        })
     return enriched
 
 
@@ -544,6 +631,15 @@ def toggle_schedule_view():
     return jsonify({"enabled": new_value == "1"})
 
 
+@app.route("/admin/digest/toggle-dashboard-update", methods=["POST"])
+@admin_required
+def toggle_dashboard_update_view():
+    current = get_setting("dashboard_update_enabled", "0")
+    new_value = "0" if current == "1" else "1"
+    set_setting("dashboard_update_enabled", new_value)
+    return jsonify({"enabled": new_value == "1"})
+
+
 @app.route("/admin/game/<app_id>/toggle-digest", methods=["POST"])
 @admin_required
 def toggle_digest_view(app_id: str):
@@ -575,12 +671,32 @@ def send_email_view(app_id: str):
 @app.route("/admin/send-digest", methods=["POST"])
 @admin_required
 def send_digest_view():
-    job_id = _create_job("Starting weekly digest...")
+    job_id = _create_job("Starting weekly job...")
     thread = threading.Thread(target=_run_digest, args=(job_id,), daemon=True)
     thread.start()
     return redirect(url_for("job_status_page", job_id=job_id,
-                            game_name="Weekly Digest",
+                            game_name="Weekly Job",
                             next=url_for("index")))
+
+
+@app.route("/admin/run-weekly", methods=["POST"])
+def run_weekly_cron():
+    """Webhook for the Railway cron service. Protected by Bearer token, not session.
+
+    Railway cron command:
+        curl -s -o /dev/null -w "%{http_code}" -X POST \\
+             https://reviews.jonathanpaek.com/admin/run-weekly \\
+             -H "Authorization: Bearer $WEEKLY_SECRET"
+    """
+    if not WEEKLY_SECRET:
+        return jsonify({"error": "WEEKLY_SECRET not configured"}), 500
+    auth = request.headers.get("Authorization", "")
+    if auth != f"Bearer {WEEKLY_SECRET}":
+        return jsonify({"error": "Unauthorized"}), 401
+    job_id = _create_job("Starting weekly job (cron)...")
+    thread = threading.Thread(target=_run_digest, args=(job_id,), daemon=True)
+    thread.start()
+    return jsonify({"job_id": job_id, "status": "started"}), 202
 
 
 @app.route("/admin/status/<job_id>")

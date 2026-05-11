@@ -47,6 +47,7 @@ FROM_EMAIL=you@example.com     # must match verified SendGrid sender
 TO_EMAIL=you@example.com
 FLASK_SECRET_KEY=...           # any long random string
 ADMIN_PASSWORD=...             # dashboard admin login
+WEEKLY_SECRET=...              # Bearer token for /admin/run-weekly cron webhook (generate with: openssl rand -hex 32)
 ```
 
 `load_dotenv(override=True)` — `.env` always wins over shell env vars. Do NOT put `DB_PATH` in `.env`; it's set via Railway's env panel for prod and falls back to `data/history.db` locally.
@@ -61,9 +62,17 @@ Use-case: reviewed Monday morning to catch what happened over the weekend.
 ### app.py (Flask dashboard)
 - Public routes: `/` (game cards), `/game/<app_id>` (detail with charts)
 - Admin routes (session-gated): `/admin/add`, `/admin/game/<id>/remove`, `/admin/game/<id>/refresh-votes`, `/admin/game/<id>/reanalyze`
+- Cron webhook: `/admin/run-weekly` (POST, Bearer token via `WEEKLY_SECRET`) — triggers `_run_digest` from Railway's weekly-digest cron service
 - Auth: single `ADMIN_PASSWORD` env var, Flask session cookie — no user system
 - Long-running jobs run in daemon threads; frontend polls `/api/status/<job_id>` every 2s. Job state is in-memory (`_jobs` dict) — resets on restart, which is fine.
 - Smart re-add: if a removed game is re-added and runs already exist, runs vote refresh instead of the full Claude backfill
+
+### Weekly job (`_run_digest`)
+The single authoritative weekly runner. Triggered by the "Run Weekly Now" button (admin navbar) or the Railway cron webhook. Two independent toggles control what it does:
+- **Weekly update** (teal toggle) — fetches and analyzes the last complete Mon–Sun week for **all** tracked games. Saves 0-review sentinel runs (review_count=0, overall_sentiment="none") for games with no activity that week, so the dashboard date advances and shows "No reviews in this period" rather than stale data.
+- **Weekly digest** (indigo toggle) — sends a consolidated email for digest-enabled games using the just-saved data.
+
+Always uses Mon–Sun date anchoring (`run_date` = Sunday ending the window).
 
 ### Admin actions (game detail page)
 - **Refresh Steam ratings** — fetches 37 days of Steam votes, updates existing runs. No Claude calls. Aborts if Steam returns 0 reviews (prevents wiping data).
@@ -79,6 +88,8 @@ Use-case: reviewed Monday morning to catch what happened over the weekend.
 - **Top Review Themes chart:** horizontal bars, sorted by `review_count` desc, top 8 shown. Week selector: 4 buttons for most recent weeks with data + "Older weeks…" dropdown for anything beyond that. Single-week view (not aggregated). Theme labels truncated to 26 chars; tooltip resolves full name before index lookup.
 - **AI sentiment palette** (consistent across charts): positive `rgba(74,222,128)`, mixed `rgba(251,146,60)`, negative `rgba(248,113,113)`. 0.75 alpha at rest, 1.0 on hover.
 - **0-themes warning:** shown when a run has >0 reviews but 0 themes — flags analysis failures.
+- **0-review runs:** when `review_count == 0` (sentinel run from a quiet week), AI Sentiment card shows "—" + "No reviews in this period"; Last Analysis Run card shows "No reviews in this period"; index card hides the sentiment badge and themes.
+- **Index card:** shows "Last Review Period: [Mon] – [Sun, YYYY]" + "X reviews analyzed" (replaces old "X reviews in last 7 days · run_date").
 - Tailwind CDN (`https://cdn.tailwindcss.com`) + Chart.js v4 — no build step. We previously switched to a pre-generated `static/tailwind.min.css` to fix Edge's "Not Secure" warning, but the warning persisted and the pre-generated approach caused pain with git worktrees (each worktree needs its own `npx tailwindcss` regeneration whenever new utility classes are added). Switched back to CDN. Edge's "Not Secure" is unrelated to the CDN — likely an HTTPS/mixed-content issue with the Railway deployment.
 
 ### steam.py
@@ -110,7 +121,8 @@ Use-case: reviewed Monday morning to catch what happened over the weekend.
 ## Deployment
 - Deployed on Railway at `reviews.jonathanpaek.com`
 - `DB_PATH` set via Railway env panel → persistent Volume. Not in `.env`.
-- Weekly-digest cron service on Railway (currently inactive)
+- `start.sh` is the entry point for all Railway services — branches on `$RAILWAY_SERVICE_NAME` so both services share one `railway.toml`
+- **weekly-digest cron service** — hits `POST /admin/run-weekly` via curl on schedule. Requires `WEEKLY_SECRET` env var set in both services on Railway. Cron schedule: `0 8 * * 1` (Mondays 8 AM UTC).
 
 ## Git workflow
 - Feature branches → PR → merge to main

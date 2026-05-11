@@ -122,7 +122,7 @@ Always uses Mon–Sun date anchoring (`run_date` = Sunday ending the window).
 - Deployed on Railway at `reviews.jonathanpaek.com`
 - `DB_PATH` set via Railway env panel → persistent Volume. Not in `.env`.
 - `start.sh` is the entry point for all Railway services — branches on `$RAILWAY_SERVICE_NAME` so both services share one `railway.toml`
-- **weekly-digest cron service** — hits `POST /admin/run-weekly` via curl on schedule. Requires `WEEKLY_SECRET` env var set in both services on Railway. Cron schedule: `0 8 * * 1` (Mondays 8 AM UTC).
+- **weekly-digest cron service** — hits `POST /admin/run-weekly` via curl on schedule. Requires `WEEKLY_SECRET` env var set in both services on Railway. Cron schedule: `0 13 * * 1` (Mondays 13:00 UTC / Monday morning ET).
 
 ## Git workflow
 - Feature branches → PR → merge to main

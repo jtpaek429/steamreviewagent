@@ -145,6 +145,7 @@
       <p class="text-xs text-yellow-600 mb-3">Only one run — trend will appear after more weekly runs.</p>
     {% endif %}
     <canvas id="activityChart"></canvas>
+    <p id="sentiment-notice" class="hidden text-xs text-gray-400 mt-2">No reviews in the latest period.</p>
     <div class="flex items-center justify-center gap-4 mt-3 flex-wrap">
       <span class="flex items-center gap-1.5 text-xs text-gray-400">
         <span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(74,222,128,1)"></span> Positive
@@ -315,7 +316,8 @@
           <span class="text-xs px-2 py-0.5 rounded-full
             {% if s == 'positive' %}bg-green-900 text-green-300
             {% elif s == 'negative' %}bg-red-900 text-red-300
-            {% else %}bg-yellow-900 text-yellow-300{% endif %}">
+            {% elif s == 'mixed' %}bg-yellow-900 text-yellow-300
+            {% else %}bg-gray-800 text-gray-400{% endif %}">
             {{ s }}
           </span>
         </td>
@@ -329,6 +331,14 @@
 
 <script>
 const chartData = {{ chart_data | safe }};
+
+function toRangeLabel(sundayIso) {
+  const sun = new Date(sundayIso + 'T00:00:00Z');
+  const mon = new Date(sun);
+  mon.setUTCDate(mon.getUTCDate() - 6);
+  const fmt = d => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  return `${fmt(mon)} – ${fmt(sun)}`;
+}
 
 // All weeks' theme data keyed by run_date
 const allWeeksThemes = {
@@ -475,6 +485,10 @@ const activityChart = new Chart(document.getElementById('activityChart'), {
       legend: { display: false },
       tooltip: {
         callbacks: {
+          title: (items) => {
+            const label = activityChart.data.labels[items[0]?.dataIndex];
+            return label ? toRangeLabel(label) : (items[0]?.label ?? '');
+          },
           label: (item) => {
             if (item.raw === null || item.raw === undefined) return null;
             const i = item.dataIndex;
@@ -491,6 +505,10 @@ const activityChart = new Chart(document.getElementById('activityChart'), {
       x: {
         stacked: true,
         ticks: {
+          callback: (val) => {
+            const label = activityChart.data.labels[val];
+            return label ? toRangeLabel(label) : val;
+          },
           color: (ctx) => sentimentDataSet.has(activityChart.data.labels[ctx.index])
             ? tickColor : tickColorEmpty,
         },
@@ -544,6 +562,12 @@ function setSentimentTimeframe(days) {
   activityChart.data.datasets[1].data = allLabels.map(l => (!dataMap[l] || zeroReviewDates.has(l)) ? null : dataMap[l].mix);
   activityChart.data.datasets[2].data = allLabels.map(l => (!dataMap[l] || zeroReviewDates.has(l)) ? null : dataMap[l].neg);
   activityChart.update();
+
+  const notice = document.getElementById('sentiment-notice');
+  if (notice) {
+    const latestLabel = allLabels[allLabels.length - 1];
+    notice.classList.toggle('hidden', !latestLabel || !zeroReviewDates.has(latestLabel));
+  }
 }
 
 // Initialise with 30-day view
@@ -635,11 +659,11 @@ function showWeek(runDate) {
   const olderWeeks  = weeksWithThemes.slice(4);
   const container   = document.getElementById('week-toggles');
 
-  recentWeeks.forEach((date, idx) => {
+  recentWeeks.forEach((date) => {
     const btn = document.createElement('button');
     btn.dataset.date = date;
-    btn.className = `week-btn text-xs px-2.5 py-1 rounded-full border transition-colors ${idx === 0 ? btnActive : btnInactive}`;
-    btn.textContent = date;
+    btn.className = `week-btn text-xs px-2.5 py-1 rounded-full border transition-colors ${btnInactive}`;
+    btn.textContent = toRangeLabel(date);
     btn.onclick = () => showWeek(date);
     container.appendChild(btn);
   });
@@ -659,7 +683,7 @@ function showWeek(runDate) {
     olderWeeks.forEach(date => {
       const opt = document.createElement('option');
       opt.value = date;
-      opt.textContent = date;
+      opt.textContent = toRangeLabel(date);
       sel.appendChild(opt);
     });
 
@@ -673,6 +697,8 @@ function showWeek(runDate) {
 
     container.appendChild(sel);
   }
+
+  if (recentWeeks.length > 0) showWeek(recentWeeks[0]);
 })();
 {% endif %}
 </script>

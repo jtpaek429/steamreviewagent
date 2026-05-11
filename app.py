@@ -484,6 +484,7 @@ def game_detail(app_id: str):
         "ai_positive": [t[0] for t in theme_data],
         "ai_mixed": [t[1] for t in theme_data],
         "ai_negative": [t[2] for t in theme_data],
+        "zero_review_dates": [r["run_date"] for r in runs if r["review_count"] == 0],
     })
 
     latest_with_themes = next((r for r in reversed(runs) if r.get("themes")), None)

@@ -1,5 +1,5 @@
 # Steam Review Agent
-A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them through Claude to extract sentiment and themes, and delivers a digest email + persistent dashboard.
+A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them through Claude to extract sentiment and themes, and delivers a digest email + persistent dashboard. This is a tool that I wish I had while working on Starlight Re:Volver @ Pahdo Labs.
 
 **Live demo:** [reviews.jonathanpaek.com](https://reviews.jonathanpaek.com)
 

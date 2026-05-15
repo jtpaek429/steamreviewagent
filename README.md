@@ -10,7 +10,7 @@ A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them
 - Stores history in SQLite and serves a Flask dashboard with trend charts
 
 ### Why I built this
-This is a tool I wish I had while I still worked at Pahdo Labs. While there are some existing tools that provide high level positive/negative game review ratings, there aren't any that help you quickly understand player review sentiment & the underlying context behind those reviews. I wanted to make something where I could easily access that user sentiment as well as track relevant themes longitudinally across a number of different games. I focused on English-language reviews to focus on that audience segment & manage cost.
+This is a tool I wish I had while I still worked at Pahdo Labs. While there are some existing tools that provide high level positive/negative game review ratings, there aren't any that help you quickly understand player review sentiment & the underlying context behind those reviews. I wanted to make something where I could easily access that user sentiment as well as track relevant themes longitudinally across a number of different games. 
 
 ### Stack
 Python · Flask · SQLite · Claude API (Anthropic) · SendGrid · Railway
@@ -23,6 +23,7 @@ Steam API → steam.py → analyze.py (Claude) → email_sender.py (SendGrid) �
 - Week anchoring from Mon 00:00 → Sun 23:59 for consistent comparison window 
 - Weekly job updates all tracked games and optionally sends a digest email, both independently toggled from the admin navbar
 - Deployed on Railway with a cron webhook (/admin/run-weekly) to trigger the weekly pipeline
+- Initial focus on English-language reviews only for audience segmentation & cost management 
 
 ## Screenshots & Slay the Spire 2 Mini Case Study
 Slay the Spire 2 is a very popular Early Access game that I've been loosely following since its release. Steam Review Agent flagged a pretty significant sentiment shift in the week ending Sunday 4/19. Even though the analysis focuses on English reviews, the pipeline was still able to identify that some balance changes drew an outsized negative reaction from the game's Chinese playerbase. It was also able to pick up on Discord being blocked in China, which left Steam as the primary outlet for community feedback & protest. 

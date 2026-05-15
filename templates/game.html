@@ -297,7 +297,11 @@
 
 <!-- Run history table -->
 <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
-  <h2 class="font-semibold mb-4">Run History</h2>
+  <button id="run-history-toggle" class="flex items-center justify-between w-full text-left" aria-expanded="false">
+    <h2 class="font-semibold">Run History</h2>
+    <span id="run-history-chevron" class="text-gray-500 text-xs transition-transform">▲</span>
+  </button>
+  <div id="run-history-body" class="hidden mt-4">
   <table class="w-full text-sm">
     <thead>
       <tr class="text-gray-400 border-b border-gray-800 text-left">
@@ -327,7 +331,22 @@
       {% endfor %}
     </tbody>
   </table>
+  </div><!-- /run-history-body -->
 </div>
+
+<script>
+(function () {
+  var toggle  = document.getElementById('run-history-toggle');
+  var body    = document.getElementById('run-history-body');
+  var chevron = document.getElementById('run-history-chevron');
+  toggle.addEventListener('click', function () {
+    var expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', !expanded);
+    body.classList.toggle('hidden', expanded);
+    chevron.textContent = expanded ? '▲' : '▼';
+  });
+})();
+</script>
 
 <script>
 const chartData = {{ chart_data | safe }};

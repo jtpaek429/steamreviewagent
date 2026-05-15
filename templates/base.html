@@ -9,10 +9,40 @@
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
+  <!-- Methodology modal -->
+  <div id="methodology-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/60" id="methodology-backdrop"></div>
+    <div class="relative bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-lg w-full shadow-2xl">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="font-semibold text-white">How we calculate these metrics</h2>
+        <button id="methodology-close" class="text-gray-500 hover:text-white transition-colors text-lg leading-none">&times;</button>
+      </div>
+      <div class="space-y-4 text-sm text-gray-300">
+        <div>
+          <p class="font-medium text-white mb-1">Current Steam Rating</p>
+          <p class="text-gray-400">Steam's official all-time rating for the game, pulled directly from the Steam store. Reflects all reviews in all languages since launch.</p>
+        </div>
+        <div>
+          <p class="font-medium text-white mb-1">Last 7-Day Steam Rating</p>
+          <p class="text-gray-400">Review distribution from up to 500 of the most recent English-language reviews in the analysis window (Mon–Sun UTC). May differ from Steam's own "Recent Reviews" label, which counts all languages.</p>
+        </div>
+        <div>
+          <p class="font-medium text-white mb-1">AI Sentiment &amp; Themes</p>
+          <p class="text-gray-400">Up to 500 English-language reviews from the same window are sent to Claude for analysis. Claude identifies recurring themes, classifies each as positive/mixed/negative, and surfaces representative quotes. Themes with clearly opposing camps are split into "Praised" and "Criticized" entries instead of collapsed into a single mixed theme.</p>
+        </div>
+        <p class="text-xs text-gray-500 pt-1 border-t border-gray-800">Note: analysis is scoped to English-language reviews to reflect the English-speaking audience and manage cost.</p>
+      </div>
+    </div>
+  </div>
+
   <nav class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-    <a href="/" class="text-base font-semibold text-white tracking-tight">
-      🎮 Steam Review Dashboard
-    </a>
+    <div class="flex items-center gap-3">
+      <a href="/" class="text-base font-semibold text-white tracking-tight">
+        🎮 Steam Review Dashboard
+      </a>
+      <span class="text-gray-700 text-sm">·</span>
+      <button id="methodology-btn" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">How is this calculated?</button>
+    </div>
     <div class="flex items-center gap-4">
       {% if is_admin %}
         <!-- Weekly dashboard update toggle -->
@@ -63,6 +93,21 @@
         <a href="/login" class="text-sm text-gray-400 hover:text-white transition-colors">Admin</a>
       {% endif %}
     </div>
+
+  <script>
+  (function () {
+    var modal   = document.getElementById('methodology-modal');
+    var btn     = document.getElementById('methodology-btn');
+    var close   = document.getElementById('methodology-close');
+    var backdrop = document.getElementById('methodology-backdrop');
+    function openModal()  { modal.classList.remove('hidden'); }
+    function closeModal() { modal.classList.add('hidden'); }
+    btn.addEventListener('click', openModal);
+    close.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+  })();
+  </script>
 
     {% if is_admin %}
     <script>

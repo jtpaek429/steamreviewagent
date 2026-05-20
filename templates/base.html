@@ -30,6 +30,10 @@
           <p class="font-medium text-white mb-1">AI Sentiment &amp; Themes</p>
           <p class="text-gray-400">Up to 500 English-language reviews from the same window are sent to Claude for analysis. Claude identifies recurring themes, classifies each as positive/mixed/negative, and surfaces representative quotes. Themes with clearly opposing camps are split into "Praised" and "Criticized" entries instead of collapsed into a single mixed theme.</p>
         </div>
+        <div>
+          <p class="font-medium text-white mb-1">Spike Analysis</p>
+          <p class="text-gray-400">After themes are identified, a separate Claude pass evaluates each theme for anomalies. Claude determines a spike by looking at meaningful week-over-week theme changes, new themes with notable volume, or clear one-time events. Claude then generates a hypothesis for each spike &amp; includes representative quotes. It also dismisses themes that are it views as stable week-over-week or seem like noise.</p>
+        </div>
         <p class="text-xs text-gray-500 pt-1 border-t border-gray-800">Note: analysis is scoped to English-language reviews to reflect the English-speaking audience and manage cost.</p>
       </div>
     </div>

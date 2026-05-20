@@ -16,11 +16,10 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 
 load_dotenv(override=True)
 
-from analyze import analyze_reviews
+from analyze import analyze_reviews_agentic
 from steam import SteamAPIError, fetch_game_name, fetch_review_summary, fetch_reviews
 from trends import (
     add_game,
-    compute_trends,
     delete_runs_except,
     get_all_runs,
     get_game,
@@ -135,7 +134,7 @@ def _run_backfill(app_id: str, job_id: str) -> None:
         try:
             _update_job(job_id, "running",
                         f"Analyzing week {week_num + 1} of 4 ({len(reviews)} reviews)...")
-            analysis = analyze_reviews(reviews)
+            analysis = analyze_reviews_agentic(reviews, previous_run=None)
         except Exception as e:
             _update_job(job_id, "error", f"Analysis failed on week {week_num + 1}: {e}")
             return
@@ -175,9 +174,10 @@ def _run_single_week(app_id: str, sunday_date: str, job_id: str) -> None:
         _update_job(job_id, "complete", "No reviews found in that week window.")
         return
 
+    previous_run = load_last_run(app_id)
     try:
-        _update_job(job_id, "running", f"Analyzing {len(reviews)} reviews...")
-        analysis = analyze_reviews(reviews)
+        _update_job(job_id, "running", f"Analyzing {len(reviews)} reviews (agentic pipeline)...")
+        analysis = analyze_reviews_agentic(reviews, previous_run=previous_run)
     except Exception as e:
         _update_job(job_id, "error", f"Analysis failed: {e}")
         return
@@ -186,8 +186,10 @@ def _run_single_week(app_id: str, sunday_date: str, job_id: str) -> None:
     negative_count = len(reviews) - positive_count
     save_run(app_id, analysis, run_date=sunday_date,
              positive_count=positive_count, negative_count=negative_count)
+    meta = analysis.get("agentic_metadata", {})
     _update_job(job_id, "complete",
-                f"Done — {len(reviews)} reviews analyzed for week of {sunday_date}.")
+                f"Done — {len(reviews)} reviews, {meta.get('passes_used', 1)} pass(es), "
+                f"{meta.get('batches_used', 1)} batch(es) for week of {sunday_date}.")
 
 
 def _run_vote_refresh(app_id: str, job_id: str) -> None:
@@ -332,8 +334,9 @@ def _run_digest(job_id: str) -> None:
                 }
                 continue
 
+            previous_run = load_last_run(app_id)
             try:
-                analysis = analyze_reviews(reviews)
+                analysis = analyze_reviews_agentic(reviews, previous_run=previous_run)
             except (ValueError, RuntimeError) as e:
                 analysis_results[app_id] = {
                     "game_name": game_name, "analysis": None, "trend_spikes": [], "error": str(e)
@@ -342,13 +345,11 @@ def _run_digest(job_id: str) -> None:
 
             pos = sum(1 for r in reviews if r["voted_up"])
             neg = len(reviews) - pos
-            previous_run = load_last_run(app_id)
-            trend_spikes = compute_trends(analysis, previous_run) if previous_run else []
             save_run(app_id, analysis, run_date=sunday_date,
                      positive_count=pos, negative_count=neg)
             analysis_results[app_id] = {
                 "game_name": game_name, "analysis": analysis,
-                "trend_spikes": trend_spikes, "error": None,
+                "trend_spikes": analysis.get("flagged_spikes", []), "error": None,
             }
 
         # Send digest email if enabled

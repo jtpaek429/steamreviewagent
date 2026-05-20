@@ -53,6 +53,12 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        # Migrate existing DBs that predate the agentic_metadata column
+        try:
+            conn.execute("ALTER TABLE runs ADD COLUMN agentic_metadata_json TEXT NOT NULL DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
@@ -72,19 +78,21 @@ def save_run(
     if run_date is None:
         run_date = date.today().isoformat()
     themes = analysis.get("themes", [])
+    agentic_metadata = analysis.get("agentic_metadata", {})
     with _connect() as conn:
         conn.execute(
             """
             INSERT INTO runs
                 (app_id, run_date, review_count, overall_sentiment, themes_json,
-                 positive_count, negative_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 positive_count, negative_count, agentic_metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(app_id, run_date) DO UPDATE SET
-                review_count      = excluded.review_count,
-                overall_sentiment = excluded.overall_sentiment,
-                themes_json       = excluded.themes_json,
-                positive_count    = excluded.positive_count,
-                negative_count    = excluded.negative_count
+                review_count           = excluded.review_count,
+                overall_sentiment      = excluded.overall_sentiment,
+                themes_json            = excluded.themes_json,
+                positive_count         = excluded.positive_count,
+                negative_count         = excluded.negative_count,
+                agentic_metadata_json  = excluded.agentic_metadata_json
             """,
             (
                 app_id,
@@ -94,6 +102,7 @@ def save_run(
                 json.dumps(themes),
                 positive_count,
                 negative_count,
+                json.dumps(agentic_metadata),
             ),
         )
 
@@ -194,7 +203,7 @@ def get_all_runs(app_id: str) -> list[dict]:
         rows = conn.execute(
             """
             SELECT run_date, review_count, overall_sentiment, themes_json,
-                   positive_count, negative_count
+                   positive_count, negative_count, agentic_metadata_json
             FROM runs WHERE app_id = ? ORDER BY run_date ASC
             """,
             (app_id,),
@@ -207,6 +216,7 @@ def get_all_runs(app_id: str) -> list[dict]:
             "themes": json.loads(r[3]),
             "positive_count": r[4],
             "negative_count": r[5],
+            "agentic_metadata": json.loads(r[6]) if r[6] else {},
         }
         for r in rows
     ]
@@ -218,7 +228,8 @@ def load_last_run(app_id: str) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT run_date, review_count, overall_sentiment, themes_json
+            SELECT run_date, review_count, overall_sentiment, themes_json,
+                   agentic_metadata_json
             FROM runs
             WHERE app_id = ? AND run_date < ?
             ORDER BY run_date DESC
@@ -235,6 +246,7 @@ def load_last_run(app_id: str) -> dict | None:
         "review_count": row[1],
         "overall_sentiment": row[2],
         "themes": json.loads(row[3]),
+        "agentic_metadata": json.loads(row[4]) if row[4] else {},
     }
 
 

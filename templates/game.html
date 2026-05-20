@@ -117,6 +117,12 @@
         {{ latest.review_count }} reviews analyzed
       {% endif %}
     </p>
+    {% set meta = latest.agentic_metadata %}
+    {% if meta and latest.review_count > 0 %}
+      <p class="text-xs text-gray-600 mt-1">
+        {{ meta.get('passes_used', 1) }} analysis pass{{ 'es' if meta.get('passes_used', 1) != 1 }}
+      </p>
+    {% endif %}
   </div>
 
 </div>
@@ -177,6 +183,35 @@
     {% endif %}
   </div>
 
+</div>
+
+<!-- Spike Analysis — JS-driven, week-selectable, collapsible -->
+<div id="spike-analysis-section" class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-8" style="display:none">
+  <div class="flex items-center justify-between">
+    <div id="spike-toggle-area" class="flex-1 cursor-pointer select-none">
+      <h2 class="font-semibold">Spike Analysis</h2>
+      <p id="spike-subtitle" class="text-xs text-gray-500 mt-0.5"></p>
+    </div>
+    <div class="flex items-center gap-3">
+      <select id="spike-week-select"
+              class="text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-md px-2 py-1 cursor-pointer focus:outline-none focus:border-gray-500">
+      </select>
+      <span id="spike-chevron" class="text-gray-500 text-xs transition-transform cursor-pointer select-none">▲</span>
+    </div>
+  </div>
+
+  <div id="spike-body" class="hidden mt-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div id="spike-flagged-col">
+        <p class="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Flagged</p>
+        <div id="spike-flagged-content" class="overflow-y-auto pr-1" style="max-height:24rem"></div>
+      </div>
+      <div id="spike-dismissed-col">
+        <p class="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Dismissed</p>
+        <div id="spike-dismissed-content" class="overflow-y-auto pr-1" style="max-height:24rem"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Admin actions -->
@@ -309,10 +344,12 @@
         <th class="pb-2 font-medium">Sentiment</th>
         <th class="pb-2 font-medium text-right">Reviews</th>
         <th class="pb-2 font-medium text-right">Themes</th>
+        <th class="pb-2 font-medium text-right">Passes</th>
       </tr>
     </thead>
     <tbody>
       {% for run in runs | reverse %}
+      {% set meta = run.agentic_metadata %}
       <tr class="border-b border-gray-800/50 last:border-0">
         <td class="py-2.5 text-gray-300">{{ run.run_date }}</td>
         <td class="py-2.5">
@@ -327,6 +364,9 @@
         </td>
         <td class="py-2.5 text-right text-gray-300">{{ run.review_count }}</td>
         <td class="py-2.5 text-right text-gray-300">{{ run.themes|length }}</td>
+        <td class="py-2.5 text-right text-gray-500">
+          {% if meta and run.review_count > 0 %}{{ meta.get('passes_used', '—') }}{% else %}—{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -363,6 +403,15 @@ function toRangeLabel(sundayIso) {
 const allWeeksThemes = {
   {% for run in runs %}
   "{{ run.run_date }}": {{ run.themes | tojson }}{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+
+// Agentic metadata (spike candidates) keyed by run_date — only weeks with data
+const allWeeksMeta = {
+  {% for run in runs %}
+  {% if run.agentic_metadata and run.agentic_metadata.get('spike_candidates') %}
+  "{{ run.run_date }}": {{ run.agentic_metadata | tojson }},
+  {% endif %}
   {% endfor %}
 };
 
@@ -629,7 +678,7 @@ function buildThemesData(runDate) {
   const themes = (allWeeksThemes[runDate] || [])
     .slice().sort((a, b) => b.review_count - a.review_count).slice(0, 8);
   return {
-    labels: themes.map(t => truncateLabel(t.name)),
+    labels: themes.map(t => (t.deeper_pass ? '↻ ' : '') + truncateLabel(t.name)),
     datasets: [{
       data: themes.map(t => t.review_count),
       backgroundColor: themes.map(t => sentimentColor(t.sentiment, 0.75)),
@@ -720,6 +769,109 @@ function showWeek(runDate) {
   if (recentWeeks.length > 0) showWeek(recentWeeks[0]);
 })();
 {% endif %}
+
+// ── Spike Analysis panel ───────────────────────────────────────────────────────
+
+(function initSpikeAnalysis() {
+  const spikeWeeks = Object.keys(allWeeksMeta).sort((a, b) => b.localeCompare(a));
+  if (!spikeWeeks.length) return;
+
+  const section   = document.getElementById('spike-analysis-section');
+  const body      = document.getElementById('spike-body');
+  const chevron   = document.getElementById('spike-chevron');
+  const subtitle  = document.getElementById('spike-subtitle');
+  const select    = document.getElementById('spike-week-select');
+  const toggleArea = document.getElementById('spike-toggle-area');
+
+  section.style.display = '';
+
+  // Populate week selector
+  spikeWeeks.forEach(date => {
+    const opt = document.createElement('option');
+    opt.value = date;
+    opt.textContent = toRangeLabel(date);
+    select.appendChild(opt);
+  });
+
+  function renderSpikeWeek(date) {
+    const meta = allWeeksMeta[date] || {};
+    const candidates = meta.spike_candidates || [];
+    const flagged   = candidates.filter(c => c.flagged);
+    const dismissed = candidates.filter(c => !c.flagged);
+    const passes = meta.passes_used || 1;
+
+    subtitle.textContent = `${candidates.length} theme${candidates.length !== 1 ? 's' : ''} evaluated — ${flagged.length} flagged, ${dismissed.length} dismissed · ${passes} analysis pass${passes !== 1 ? 'es' : ''}`;
+
+    const spikeColors = {
+      positive: { bg: 'bg-green-900/20',  border: 'border-green-800/40',  text: 'text-green-300'  },
+      negative: { bg: 'bg-red-900/20',    border: 'border-red-800/40',    text: 'text-red-300'    },
+      mixed:    { bg: 'bg-yellow-900/20', border: 'border-yellow-800/40', text: 'text-yellow-300' },
+    };
+
+    const flaggedEl = document.getElementById('spike-flagged-content');
+    flaggedEl.innerHTML = flagged.length
+      ? flagged.map(c => {
+          const col = spikeColors[c.sentiment] || spikeColors.mixed;
+          const quotes = (c.representative_quotes || [])
+            .map(q => `<li class="border-l-2 border-gray-700 pl-2 text-gray-500 italic">&ldquo;${q}&rdquo;</li>`)
+            .join('');
+          const hypothesis = c.hypothesis
+            ? `<p class="text-xs text-gray-300 mt-2">💡 ${c.hypothesis}</p>`
+            : '';
+          return `
+          <div class="${col.bg} border ${col.border} rounded-md p-3 mb-2">
+            <p class="text-xs font-semibold ${col.text}">⚡ ${c.label || c.theme_name || ''}</p>
+            <p class="text-xs text-gray-400 mt-1">${c.detail || ''}</p>
+            ${hypothesis}
+            ${quotes ? `<ul class="mt-2 space-y-1 list-none text-xs">${quotes}</ul>` : ''}
+          </div>`;
+        }).join('')
+      : '<p class="text-xs text-gray-600 italic">No spikes flagged this week.</p>';
+
+    // Infer sentiment from stored value, falling back to theme-name suffix pattern
+    function spikeSentiment(c) {
+      if (c.sentiment === 'positive' || c.sentiment === 'negative' || c.sentiment === 'mixed') return c.sentiment;
+      const name = (c.theme_name || '').toLowerCase();
+      if (name.includes('— praised') || name.includes('- praised')) return 'positive';
+      if (name.includes('— criticized') || name.includes('- criticized')) return 'negative';
+      return 'mixed';
+    }
+    // Match the -300 Tailwind variants used for flagged spike titles
+    const spikeTextColor = { positive: '#86efac', negative: '#fca5a5', mixed: '#fde047' };
+
+    const dismissedEl = document.getElementById('spike-dismissed-content');
+    dismissedEl.innerHTML = dismissed.length
+      ? dismissed.map(c => {
+          const color = spikeTextColor[spikeSentiment(c)];
+          return `
+          <div class="bg-gray-800/50 border border-gray-700/40 rounded-md p-3 mb-2">
+            <p class="text-xs font-semibold" style="color:${color}">${c.theme_name || ''}</p>
+            <p class="text-xs text-gray-600 mt-1">${c.reason || ''}</p>
+          </div>`;
+        }).join('')
+      : '<p class="text-xs text-gray-600 italic">No candidates were dismissed.</p>';
+  }
+
+  let expanded = true;
+  body.classList.remove('hidden');
+  chevron.textContent = '▼';
+
+  function togglePanel() {
+    expanded = !expanded;
+    body.classList.toggle('hidden', !expanded);
+    chevron.textContent = expanded ? '▼' : '▲';
+  }
+
+  toggleArea.addEventListener('click', togglePanel);
+  chevron.addEventListener('click', togglePanel);
+
+  select.addEventListener('change', e => {
+    renderSpikeWeek(e.target.value);
+  });
+  select.addEventListener('click', e => e.stopPropagation());
+
+  renderSpikeWeek(spikeWeeks[0]);
+})();
 </script>
 
 {% endif %}

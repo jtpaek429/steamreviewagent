@@ -67,60 +67,11 @@ ANALYSIS_TOOL = {
                     "required": ["name", "description", "review_count", "sentiment", "representative_quotes", "confidence"],
                 },
             },
-            "flagged_spikes": {
-                "type": "array",
-                "description": "Notable spikes or anomalies worth flagging (e.g. sudden surge in crash reports, review bomb, DLC backlash). Empty list if nothing stands out.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "label": {"type": "string"},
-                        "detail": {"type": "string"},
-                    },
-                    "required": ["label", "detail"],
-                },
-            },
-            "ambiguous_theme_names": {
-                "type": "array",
-                "description": "Names of themes where sentiment or scope is still unclear and a focused deeper pass would help. Empty list if all themes are well-understood.",
-                "items": {"type": "string"},
-            },
         },
-        "required": ["review_count", "overall_sentiment", "themes", "flagged_spikes", "ambiguous_theme_names"],
+        "required": ["review_count", "overall_sentiment", "themes"],
     },
 }
 
-
-FOCUSED_ANALYSIS_TOOL = {
-    "name": "submit_focused_analysis",
-    "description": "Submit updated analysis for a specific set of ambiguous themes.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "themes": {
-                "type": "array",
-                "description": "Updated theme objects for the requested themes only. Use the same schema as the primary analysis.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "description": {"type": "string"},
-                        "review_count": {"type": "integer"},
-                        "sentiment": {"type": "string", "enum": ["positive", "negative", "mixed"]},
-                        "representative_quotes": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
-                        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                    },
-                    "required": ["name", "description", "review_count", "sentiment", "representative_quotes", "confidence"],
-                },
-            },
-            "ambiguous_theme_names": {
-                "type": "array",
-                "description": "Any of the requested themes still ambiguous after this deeper pass. Empty list if all are now resolved.",
-                "items": {"type": "string"},
-            },
-        },
-        "required": ["themes", "ambiguous_theme_names"],
-    },
-}
 
 
 SPIKE_VALIDATION_TOOL = {
@@ -174,16 +125,12 @@ def _run_analysis_pass(reviews: list[dict]) -> dict:
         tool_choice={"type": "tool", "name": "submit_analysis"},
         system=(
             "You are a game analytics assistant. "
-            "Analyze the provided Steam reviews and identify recurring themes, "
-            "sentiment, and any notable spikes or anomalies. "
+            "Analyze the provided Steam reviews and identify recurring themes and sentiment. "
             "Be concise and data-driven. "
             "When a topic has clearly opposing camps — some reviewers love it, others hate it — "
             "split it into two separate themes using ' — Praised' and ' — Criticized' suffixes "
             "(e.g. 'Difficulty & Challenge — Praised' and 'Difficulty & Challenge — Criticized') "
             "rather than labelling the combined theme as mixed. "
-            "Set confidence_sufficient=false only if the sample is genuinely too small or contradictory "
-            "to trust the themes. Set ambiguous_theme_names to themes where a focused re-read would "
-            "meaningfully improve confidence."
         ),
         messages=[
             {
@@ -206,57 +153,6 @@ def _run_analysis_pass(reviews: list[dict]) -> dict:
             return block.input
     raise RuntimeError("Claude did not return a tool call — unexpected response format.")
 
-
-def _run_focused_pass(reviews: list[dict], ambiguous_theme_names: list[str], current_themes: list[dict]) -> dict:
-    """Targeted re-analysis of specific ambiguous themes across all fetched reviews."""
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    review_block = _format_reviews(reviews)
-    theme_list = "\n".join(f"- {name}" for name in ambiguous_theme_names)
-    prior_summaries = "\n".join(
-        f"- {t['name']}: {t['description']} (current confidence: {t.get('confidence', '?')})"
-        for t in current_themes if t["name"] in ambiguous_theme_names
-    )
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=2048,
-        tools=[FOCUSED_ANALYSIS_TOOL],
-        tool_choice={"type": "tool", "name": "submit_focused_analysis"},
-        system=(
-            "You are a game analytics assistant performing a focused re-analysis. "
-            "A prior pass flagged certain themes as ambiguous. "
-            "Re-read the reviews specifically looking for evidence about those themes and "
-            "return updated, higher-confidence theme objects for them only."
-        ),
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Prior analysis flagged these themes as ambiguous:\n{theme_list}\n\n"
-                    f"Prior descriptions:\n{prior_summaries}\n\n"
-                    f"Here are all {len(reviews)} reviews:\n\n{review_block}\n\n"
-                    "Re-analyze specifically these themes and call submit_focused_analysis."
-                ),
-            }
-        ],
-    )
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "submit_focused_analysis":
-            if response.stop_reason == "max_tokens":
-                raise RuntimeError("Focused analysis pass was truncated (max_tokens reached).")
-            return block.input
-    raise RuntimeError("Claude did not return a tool call in focused pass.")
-
-
-def _merge_themes(current_themes: list[dict], focused_themes: list[dict]) -> list[dict]:
-    """Replace ambiguous themes with focused-pass versions; keep all others."""
-    focused_by_name = {t["name"]: t for t in focused_themes}
-    result = []
-    for t in current_themes:
-        if t["name"] in focused_by_name:
-            result.append({**focused_by_name[t["name"]], "deeper_pass": True})
-        else:
-            result.append(t)
-    return result
 
 
 def _validate_spikes(
@@ -361,34 +257,19 @@ def analyze_reviews(reviews: list[dict]) -> dict:
 
 def analyze_reviews_agentic(reviews: list[dict], previous_run: dict | None = None) -> dict:
     """
-    Agentic pipeline: adaptive sampling → multi-pass → spike validation.
+    Agentic pipeline: analysis pass → spike validation.
     Returns the analysis dict augmented with agentic_metadata.
     """
     if not reviews:
         raise ValueError("No reviews to analyze.")
 
-    # Pass all available reviews (up to 500, sampled by steam.py)
     result = _run_analysis_pass(reviews)
 
-    # Multi-pass on ambiguous themes (max 3 total passes)
-    passes_used = 1
-    for _ in range(2):  # up to 2 additional passes (3 total)
-        ambiguous = result.get("ambiguous_theme_names", [])
-        if not ambiguous:
-            break
-        focused = _run_focused_pass(reviews, ambiguous, result["themes"])
-        result["themes"] = _merge_themes(result["themes"], focused["themes"])
-        passes_used += 1
-        result["ambiguous_theme_names"] = focused.get("ambiguous_theme_names", [])
-
-    # Loop 3 — spike validation (replaces Python heuristic)
     spike_result = _validate_spikes(result["themes"], result.get("review_count", 0), previous_run)
 
     result["flagged_spikes"] = spike_result["flagged_spikes"]
     result["agentic_metadata"] = {
-        "passes_used": passes_used,
         "spike_candidates": spike_result["all_candidates"],
-        "ambiguous_themes": result.get("ambiguous_theme_names", []),
     }
     return result
 

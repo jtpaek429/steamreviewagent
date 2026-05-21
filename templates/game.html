@@ -117,12 +117,6 @@
         {{ latest.review_count }} reviews analyzed
       {% endif %}
     </p>
-    {% set meta = latest.agentic_metadata %}
-    {% if meta and latest.review_count > 0 %}
-      <p class="text-xs text-gray-600 mt-1">
-        {{ meta.get('passes_used', 1) }} analysis pass{{ 'es' if meta.get('passes_used', 1) != 1 }}
-      </p>
-    {% endif %}
   </div>
 
 </div>
@@ -344,7 +338,6 @@
         <th class="pb-2 font-medium">Sentiment</th>
         <th class="pb-2 font-medium text-right">Reviews</th>
         <th class="pb-2 font-medium text-right">Themes</th>
-        <th class="pb-2 font-medium text-right">Passes</th>
       </tr>
     </thead>
     <tbody>
@@ -364,9 +357,6 @@
         </td>
         <td class="py-2.5 text-right text-gray-300">{{ run.review_count }}</td>
         <td class="py-2.5 text-right text-gray-300">{{ run.themes|length }}</td>
-        <td class="py-2.5 text-right text-gray-500">
-          {% if meta and run.review_count > 0 %}{{ meta.get('passes_used', '—') }}{% else %}—{% endif %}
-        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -678,7 +668,7 @@ function buildThemesData(runDate) {
   const themes = (allWeeksThemes[runDate] || [])
     .slice().sort((a, b) => b.review_count - a.review_count).slice(0, 8);
   return {
-    labels: themes.map(t => (t.deeper_pass ? '↻ ' : '') + truncateLabel(t.name)),
+    labels: themes.map(t => truncateLabel(t.name)),
     datasets: [{
       data: themes.map(t => t.review_count),
       backgroundColor: themes.map(t => sentimentColor(t.sentiment, 0.75)),
@@ -798,9 +788,7 @@ function showWeek(runDate) {
     const candidates = meta.spike_candidates || [];
     const flagged   = candidates.filter(c => c.flagged);
     const dismissed = candidates.filter(c => !c.flagged);
-    const passes = meta.passes_used || 1;
-
-    subtitle.textContent = `${candidates.length} theme${candidates.length !== 1 ? 's' : ''} evaluated — ${flagged.length} flagged, ${dismissed.length} dismissed · ${passes} analysis pass${passes !== 1 ? 'es' : ''}`;
+    subtitle.textContent = `${candidates.length} theme${candidates.length !== 1 ? 's' : ''} evaluated — ${flagged.length} flagged, ${dismissed.length} dismissed`;
 
     const spikeColors = {
       positive: { bg: 'bg-green-900/20',  border: 'border-green-800/40',  text: 'text-green-300'  },

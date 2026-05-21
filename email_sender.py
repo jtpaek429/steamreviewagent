@@ -402,22 +402,14 @@ def _build_trends(trend_spikes: list[dict]) -> str:
 
 
 def _build_analysis_notes(agentic_metadata: dict) -> str:
-    """Render the agentic pipeline summary — batches, passes, spike candidates."""
+    """Render the agentic pipeline summary — spike candidates table."""
     if not agentic_metadata:
         return ""
 
-    passes = agentic_metadata.get("passes_used", 1)
     candidates = agentic_metadata.get("spike_candidates", [])
-    ambiguous = agentic_metadata.get("ambiguous_themes", [])
-
-    meta_parts = [f"{passes} analysis pass{'es' if passes != 1 else ''}"]
-    if ambiguous:
-        meta_parts.append(f"deeper pass on: {', '.join(ambiguous)}")
-
-    meta_line = " &nbsp;·&nbsp; ".join(meta_parts)
 
     if not candidates:
-        return f'<div class="analysis-notes"><div class="analysis-notes-meta">{meta_line}</div></div>'
+        return ""
 
     rows = ""
     for c in candidates:
@@ -435,7 +427,7 @@ def _build_analysis_notes(agentic_metadata: dict) -> str:
   <tbody>{rows}</tbody>
 </table>"""
 
-    return f'<div class="analysis-notes"><div class="analysis-notes-meta">{meta_line}</div>{table}</div>'
+    return f'<div class="analysis-notes">{table}</div>'
 
 
 def _today() -> str:

@@ -6,6 +6,7 @@ A self-hosted agentic pipeline that pulls Steam player reviews weekly, runs them
 ### What it does
 - Fetches up to 500 English-language reviews from the Steam public API on a Mon–Sun cadence
 - Sends reviews to Claude (claude-sonnet-4-6) via structured tool use to extract overall sentiment, top themes, representative quotes, and flagged spikes
+- NEW: Second Claude call to compare theme summary vs. last week's data and decide what constitutes a genuine spike. Returns flagged spikes with details & hypothesis about root cause. Claude is instructed to be strict with spike detection, only 1-2 spikes/week, and dismisses non-spiky consistent review themes
 - Emails a weekly digest via SendGrid
 - Stores history in SQLite and serves a Flask dashboard with trend charts
 
@@ -16,10 +17,11 @@ This is a tool I wish I had while I still worked at Pahdo Labs. While there are 
 Python · Flask · SQLite · Claude API (Anthropic) · SendGrid · Railway
 
 ### Pipeline
-Steam API → steam.py → analyze.py (Claude) → email_sender.py (SendGrid) → trends.py (SQLite) → app.py (Flask dashboard)
-
+Steam API → steam.py → analyze.py (Claude) → trends.py (SQLite)
+                                           → email_sender.py (SendGrid)
+                                           → app.py (Flask dashboard)
 ### Key features / decisions
-- Dashboard shows current Steam rating, 7-day AI sentiment, top themes, and trend charts
+- Dashboard shows current Steam rating, 7-day AI sentiment, top themes, trend charts, and spike analysis
 - Week anchoring from Mon 00:00 → Sun 23:59 for consistent comparison window 
 - Weekly job updates all tracked games and optionally sends a digest email, both independently toggled from the admin navbar
 - Deployed on Railway with a cron webhook (/admin/run-weekly) to trigger the weekly pipeline

@@ -17,6 +17,13 @@
   <p class="text-sm text-gray-500">App ID {{ game.app_id }} &middot; {{ runs|length }} run{{ 's' if runs|length != 1 }}</p>
 </div>
 
+{% if game.notice %}
+<div class="flex items-center gap-3 bg-amber-950/50 border border-amber-800/60 text-amber-200 rounded-lg px-4 py-3 mb-6">
+  <span class="text-amber-400 shrink-0">⚠</span>
+  <p class="text-sm">{{ game.notice }}</p>
+</div>
+{% endif %}
+
 {% if not runs %}
 <div class="text-center py-20 text-gray-500">
   <p class="text-lg">No analysis runs yet.</p>
@@ -257,6 +264,31 @@
       </button>
     </form>
 
+  </div>
+
+  <!-- Game notice -->
+  <div class="mt-4 pt-4 border-t border-gray-800">
+    <p class="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Game Notice</p>
+    <form method="post" action="/admin/game/{{ game.app_id }}/set-notice" class="flex gap-2 items-start">
+      <textarea name="notice" rows="2"
+                placeholder="e.g. Steam has flagged an ongoing review bomb — analysis paused until it resolves."
+                class="flex-1 text-sm bg-gray-800 border border-gray-700 text-gray-300 placeholder-gray-600 px-2.5 py-1.5 rounded-md resize-none focus:outline-none focus:border-amber-600">{{ game.notice or '' }}</textarea>
+      <div class="flex flex-col gap-1.5 shrink-0">
+        <button type="submit"
+                class="text-sm bg-amber-800/60 hover:bg-amber-700/60 border border-amber-700 text-amber-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap">
+          Save notice
+        </button>
+      </div>
+    </form>
+    {% if game.notice %}
+    <form method="post" action="/admin/game/{{ game.app_id }}/set-notice" class="mt-1.5">
+      <input type="hidden" name="notice" value="">
+      <button type="submit"
+              class="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 px-3 py-1.5 rounded-md transition-colors">
+        Clear notice
+      </button>
+    </form>
+    {% endif %}
   </div>
 
   <!-- Weekly digest toggle + one-off email -->

@@ -30,6 +30,7 @@ from trends import (
     remove_game,
     save_run,
     set_digest_flag,
+    set_game_notice,
     set_setting,
     update_run_vote_counts,
 )
@@ -651,6 +652,17 @@ def toggle_digest_view(app_id: str):
     new_value = not game["include_in_digest"]
     set_digest_flag(app_id, new_value)
     return jsonify({"include_in_digest": new_value})
+
+
+@app.route("/admin/game/<app_id>/set-notice", methods=["POST"])
+@admin_required
+def set_notice_view(app_id: str):
+    game = get_game(app_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+    notice = request.form.get("notice", "").strip() or None
+    set_game_notice(app_id, notice)
+    return redirect(url_for("game_detail", app_id=app_id))
 
 
 @app.route("/admin/game/<app_id>/send-email", methods=["POST"])

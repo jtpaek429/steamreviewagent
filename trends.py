@@ -53,6 +53,12 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        # Migrate existing DBs that predate the notice column
+        try:
+            conn.execute("ALTER TABLE games ADD COLUMN notice TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
         # Migrate existing DBs that predate the agentic_metadata column
         try:
             conn.execute("ALTER TABLE runs ADD COLUMN agentic_metadata_json TEXT NOT NULL DEFAULT '{}'")
@@ -177,10 +183,10 @@ def get_games() -> list[dict]:
     """Return all tracked games ordered by most recently added."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT app_id, game_name, added_at, include_in_digest FROM games ORDER BY added_at DESC"
+            "SELECT app_id, game_name, added_at, include_in_digest, notice FROM games ORDER BY added_at DESC"
         ).fetchall()
     return [
-        {"app_id": r[0], "game_name": r[1], "added_at": r[2], "include_in_digest": bool(r[3])}
+        {"app_id": r[0], "game_name": r[1], "added_at": r[2], "include_in_digest": bool(r[3]), "notice": r[4]}
         for r in rows
     ]
 
@@ -189,12 +195,21 @@ def get_game(app_id: str) -> dict | None:
     """Return a single tracked game, or None if not found."""
     with _connect() as conn:
         row = conn.execute(
-            "SELECT app_id, game_name, added_at, include_in_digest FROM games WHERE app_id = ?",
+            "SELECT app_id, game_name, added_at, include_in_digest, notice FROM games WHERE app_id = ?",
             (app_id,),
         ).fetchone()
     if row is None:
         return None
-    return {"app_id": row[0], "game_name": row[1], "added_at": row[2], "include_in_digest": bool(row[3])}
+    return {"app_id": row[0], "game_name": row[1], "added_at": row[2], "include_in_digest": bool(row[3]), "notice": row[4]}
+
+
+def set_game_notice(app_id: str, notice: str | None) -> None:
+    """Set or clear a notice for a game (shown as a banner on the detail page)."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE games SET notice = ? WHERE app_id = ?",
+            (notice or None, app_id),
+        )
 
 
 def get_all_runs(app_id: str) -> list[dict]:

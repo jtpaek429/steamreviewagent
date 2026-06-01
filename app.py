@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 
 load_dotenv(override=True)
 
@@ -691,6 +691,13 @@ def send_digest_view():
     return redirect(url_for("job_status_page", job_id=job_id,
                             game_name="Weekly Job",
                             next=url_for("index")))
+
+
+@app.route("/admin/download-db")
+@admin_required
+def download_db():
+    from trends import DB_PATH
+    return send_file(DB_PATH, as_attachment=True, download_name="history.db")
 
 
 @app.route("/admin/run-weekly", methods=["POST"])

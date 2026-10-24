@@ -21,6 +21,21 @@ class SteamAPIError(Exception):
     pass
 
 
+def _parse_json(response: requests.Response) -> dict:
+    """
+    Parse a Steam response as JSON, raising SteamAPIError if it isn't.
+    Steam sometimes redirects API calls to an HTML page (e.g. the store
+    homepage) with a 200, which raise_for_status() doesn't catch.
+    """
+    try:
+        return response.json()
+    except ValueError as e:
+        raise SteamAPIError(
+            f"Steam returned a non-JSON response from {response.url} "
+            f"(content-type: {response.headers.get('Content-Type', 'unknown')})."
+        ) from e
+
+
 def fetch_reviews(
     app_id: str,
     window_days: int = WINDOW_DAYS,
@@ -74,7 +89,7 @@ def fetch_reviews(
         except requests.exceptions.HTTPError as e:
             raise SteamAPIError(f"HTTP error from Steam API: {e}") from e
 
-        data = response.json()
+        data = _parse_json(response)
 
         # Steam returns success: 1 for valid app IDs
         if data.get("success") != 1:
@@ -141,7 +156,7 @@ def fetch_review_summary(app_id: str) -> dict:
     except requests.exceptions.HTTPError as e:
         raise SteamAPIError(f"HTTP error from Steam API: {e}") from e
 
-    data = response.json()
+    data = _parse_json(response)
     if data.get("success") != 1:
         raise SteamAPIError(f"Steam API returned an error for App ID '{app_id}'.")
 
@@ -173,7 +188,7 @@ def fetch_game_name(app_id: str) -> str:
     except requests.exceptions.HTTPError as e:
         raise SteamAPIError(f"HTTP error from Steam store API: {e}") from e
 
-    payload = response.json()
+    payload = _parse_json(response)
     entry = payload.get(str(app_id), {})
     if not entry.get("success"):
         raise SteamAPIError(
